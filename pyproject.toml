@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exmarg"
+version = "0.1.0"
+description = "Analytic marginalization over extrinsic parameters of compact binary signals"
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy", "healpy", "matplotlib",
+                "lalsuite", "emcee"]
+
+[project.optional-dependencies]
+data = ["gwpy"]
+dev = ["pytest", "nbformat", "jupyter"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
