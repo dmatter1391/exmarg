@@ -16,6 +16,8 @@ import cupy as cp
 
 import exmarg.gpu as gpu
 
+FAST = dict(n_loud=64, n_random=64, block=64, resident=True)    # the settings of notebook 5
+
 segments, store_dir, bank_file, out = sys.argv[1:5]
 batch = int(sys.argv[5]) if len(sys.argv) > 5 else 16
 part = int(sys.argv[6]) if len(sys.argv) > 6 else 0
@@ -31,7 +33,7 @@ snr = np.load(segments)['snr']
 
 # the first call compiles the kernels
 start = time.time()
-gpu.pe_redshift(segments, bank, store, rows=[0])
+gpu.pe_redshift(segments, bank, store, rows=[0], **FAST)
 first_seconds = time.time() - start
 
 order = np.argsort(snr)
@@ -41,7 +43,7 @@ for k, b in enumerate(batches):
     b = np.sort(b)
     cp.cuda.Device().synchronize()
     start = time.time()
-    result = gpu.pe_redshift(segments, bank, store, rows=b, chunk=batch)
+    result = gpu.pe_redshift(segments, bank, store, rows=b, chunk=batch, **FAST)
     seconds.append(time.time() - start)
     rows.append(b)
     ln_b.append(result['ln_b'])

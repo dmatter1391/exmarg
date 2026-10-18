@@ -27,6 +27,7 @@ data/year/
 !data/segments/
 !data/segments/three_parameters.npz
 !data/segments/two_parameters.npz
+!data/segments/bilby_comparison.npz
 !data/banks/
 !data/banks/*.npy
 !data/results/
