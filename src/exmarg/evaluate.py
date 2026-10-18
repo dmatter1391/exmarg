@@ -36,8 +36,8 @@ def zeta(case, dtilde, oversample=8):
 
 def load_store(store):
     """a W store is (tau_f, {key: W row}) in Taylor units; accept
-    that or an npz path.  npz stores must carry the norm flag —
-    legacy absolute-unit stores are refused."""
+    that or an npz path.  npz stores must carry the norm flag
+    (offset Taylor units)."""
     if isinstance(store, tuple):
         return store
     z = np.load(store)
@@ -138,8 +138,7 @@ class Evaluator:
         j = np.searchsorted(c.nu, nu[keep])
         a[j] = a1[keep]/c.D0
         psi0[j] = p0[keep]
-        # the case carries the noise curve of its data; recomputing
-        # from the module here could silently disagree with it
+        # the noise curve of the case is the one of its data
         sig2 = c.sig2
         u = (a**2/sig2['H']).sum()
         obj = type('P', (), dict(T=c.T, nu=c.nu, f=c.f, a=a,
@@ -183,9 +182,7 @@ class SumEvaluator:
     brackets the template u between neighbouring nodes and evaluates
     both in ONE fused sweep (kernel.sum_lnlam_pair).  the truncation
     n_max is frozen inside the tables; pick the stem set at load
-    time.  a template u OUTSIDE the ladder raises — the per-order
-    path's silent clamp analyzed with the wrong node and an O(1)
-    lnLambda error, that failure class is forbidden here.'''
+    time.  a template u outside the ladder raises an error.'''
 
     def __init__(self, case, dtilde, stems, tc, dt, parallel=False):
         ks = sorted((load_sumstore(s) for s in stems),
@@ -203,8 +200,7 @@ class SumEvaluator:
         if u < un[0] or u > un[-1]:
             raise ValueError(
                 'template u=%.2f is outside the loaded ladder '
-                '[%g, %g]; extend the stem set (silent clamping is '
-                'forbidden)' % (u, un[0], un[-1]))
+                '[%g, %g]; load more tables' % (u, un[0], un[-1]))
         j = int(np.searchsorted(un, u))
         j0, j1 = max(j - 1, 0), min(j, un.size - 1)
         return sum_lnlam_pair(self.kernels[j0], self.kernels[j1],

@@ -4,9 +4,6 @@ Every plot script imports this module and calls apply() once,
 right after importing matplotlib.  The constants below are the
 ONLY font sizes and shared palette colors the paper figures use.
 """
-import matplotlib
-matplotlib.use('Agg')
-
 # ---- font sizes
 FS_LABEL = 20     # axis labels AND colorbar labels
 FS_TICK = 16      # all tick labels, including colorbar ticks
@@ -16,9 +13,7 @@ FS_PANEL = 18     # panel tags, small per-panel titles (e.g. W^(n)_ab)
 # ---- shared palette
 NAVY = '#16263F'
 RED = '#D1605E'
-# the original blue ladder (light = shallow order, dark = deep
-# order); index 0 is a lighter extension, 1..6 are the historical
-# LADDER6 blues
+# blue ladder, light = shallow order, dark = deep order
 LADDER7 = ['#BFD3E6', '#A8C4DC', '#7FA8C9', '#5A89B4', '#3D6A99',
            '#28496C', '#16263F']
 LADDER6 = LADDER7[:6]

@@ -4,15 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "exmarg"
-version = "0.1.0"
-description = "Analytic marginalization over extrinsic parameters of compact binary signals"
+version = "1.0.0"
+description = "Marginalized likelihood ratio of compact binary signals in two detectors through generalized overlap reduction functions"
 requires-python = ">=3.10"
-dependencies = ["numpy", "scipy", "healpy", "matplotlib",
-                "lalsuite", "emcee"]
+dependencies = ["numpy", "scipy", "healpy", "matplotlib", "numba", "lalsuite"]
 
 [project.optional-dependencies]
-data = ["gwpy"]
-dev = ["pytest", "nbformat", "jupyter"]
+compare = ["bilby", "dynesty"]
+dev = ["pytest", "jupyter"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+exmarg = ["data/*.npz"]

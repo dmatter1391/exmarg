@@ -5,7 +5,7 @@ this build NOTHING is ever compiled again: sumstores of any n_max,
 lnsvec scans, truncation certificates and lnLambda_max curves are
 all mmap reads or cheap accumulations over these files.
 
-    sbatch --array=0-34 ... build_kstore.py $SLURM_ARRAY_TASK_ID 35
+    python scripts/build_kstore.py [batch] [n_batch]      (one task per ladder node)
 
 task k builds node [k] and writes
 kstore_N120_c24_u%07.2f.{lnK.npy,meta.npz}  (~49 GB raw per node).

@@ -7,9 +7,8 @@ onto a 35-task array), optionally only stems starting with prefix.
 the deposit is linear with a global 1/npix weight, so the parts of
 each u node SUM to the full table exactly.  a node is merged only
 when ALL its parts are present; parts are deleted after the final
-store is written and verified finite.  one node peaks at ~8 GB
-(float64 accumulator + one decompressed part) — run on a compute
-node, a login-node process gets killed far below that.
+store is written and verified finite.  one node needs ~8 GB of
+memory (float64 accumulator + one decompressed part).
 """
 import re
 import sys

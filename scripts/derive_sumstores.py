@@ -1,11 +1,8 @@
 """derive summed tables from the per-order K store — NO compiling:
 stream the orders of each node's kstore mmap, accumulate with
-logaddexp, snapshot at the requested truncations.  the n_max=40
-family produced this way is bit-identical to the compiled one
-(receipt: max diff 0), so deeper families derived here share the
-exact same convention.
+logaddexp, snapshot at the requested truncations.
 
-    sbatch --array=0-6 ... derive_sumstores.py 80,120 $TASK 7
+    python scripts/derive_sumstores.py 80,120 [batch] [n_batch]
 """
 import sys
 import time

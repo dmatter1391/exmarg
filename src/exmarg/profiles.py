@@ -10,7 +10,11 @@ the full inspiral, merger and ringdown; no frequency cut is applied
 beyond the analysis band.
 """
 
+import warnings
+
 import numpy as np
+
+warnings.filterwarnings('ignore', 'Wswiglal-redir-stdio')
 import lal
 import lalsimulation as ls
 

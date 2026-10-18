@@ -1,100 +1,72 @@
 # exmarg
 
-Analytic marginalization over the extrinsic parameters of a compact
-binary signal in two detectors. The likelihood marginalized over sky
-direction, arrival time, overall phase, polarization, inclination and
-luminosity distance is written as a series of data independent geometry
-tables, the generalized overlap reduction functions, contracted with
-per template data integrals. The lowest order table is the overlap
-reduction function of the cross-correlation search; higher orders deform
-it as the signal to noise ratio grows, interpolating towards the matched
-filter. With the tables precomputed, the marginalized statistic of one
-template is a table lookup, so a segment posterior is a direct grid sweep
-independent of the loudness.
+Code and notebooks of the paper *Unifying stochastic and deterministic signals: a practical search for the intermittent
+binary black-hole background* (T. Boybeyi, V. Mandic, J. D. Romano).
 
-The method targets stochastic and subthreshold signals, where no trigger
-time exists and the time prior spans whole segments, and where the same
-data are scanned over many population parameters. The derivation and the
-results are in `paper/prd.tex`.
+The likelihood ratio of a segment of data in two detectors, marginalized over the sky position, the orientation, the phase,
+the arrival time and the distance of a merger, is written as a series of data factors $T^{(n)}_{ab}(\tau)$ (delayed cross
+moments of the matched-filter outputs of the two detectors) times geometric factors $W^{(n)}_{ab}(\tau)$ (the generalized
+overlap reduction functions, GORFs). The geometric factors do not depend on the data, so they are computed once and stored.
+Analyzing a segment is then a table lookup for each template, at any truncation order.
 
 ## Install
 
 ```
-# a conda environment with numpy, scipy, healpy, matplotlib (igwn works)
-pip install -e .
-python -m pytest tests/ -q
+conda create -n exmarg python=3.10 numpy scipy healpy matplotlib numba lalsuite jupyter
+conda activate exmarg
+pip install -e .              # the package in src/exmarg
+pip install bilby dynesty     # only for the nested-sampling comparison of notebook 2
 ```
 
-## Example notebooks
+## Notebooks
 
-`examples/` reproduces every figure of the paper and doubles as a tutorial
-you run on your own data. Each notebook calls `exmarg` and saves its
-plotted data next to the figure.
+Every notebook is saved with its outputs, so the figures can be seen without running anything.
 
-| notebook | paper figures | what it does |
+| notebook | what it does | paper figures |
 |---|---|---|
-| `01_motivation.ipynb` | 1, 2 | the single-parameter arrival-time experiment and the eigenspectrum of the one-event kernel (self contained, numpy only) |
-| `02_tables.ipynb` | 3, 4, 5 | build the `W` tables with `w_table_dl`; sky-quadrature convergence; the generalized overlap reduction function |
-| `03_pe.ipynb` | 7 | parameter estimation of one event: fetch tables, sweep the intrinsic grid, corner. Swap in your own segment |
-| `04_pp.ipynb` | 10 | the P-P calibration over 596 injections, and the function to run it on your own scored grids |
-| `05_sgwb.ipynb` | 11-14 | the intermittent-background rate and mass fit, truncation-depth and segment-duration studies |
-| `06_speed.ipynb` | 15 | wall clock versus SNR against bilby |
+| `notebooks/01_tables.ipynb` | builds the W tables, saves them, draws the GORFs in delay and in frequency | 3, 4, 5, 14, 15 |
+| `notebooks/02_one_segment.ipynb` | simulates a segment with a merger, computes the posterior of the chirp mass, mass ratio and spin, runs `bilby`/`dynesty` on the same segment and compares, convergence with the truncation order | 16, 17, 18, 20, 21 |
+| `notebooks/03_pp.ipynb` | probability-probability test for any prior box of the intrinsic parameters | 19 |
+| `notebooks/04_population.ipynb` | the population results of one simulated year | 6 to 13, 22 to 28 |
 
-The notebooks that only reproduce a figure load the small shipped arrays in
-`examples/data/` and run in seconds. `03_pe` scores a live grid and needs
-the tables (below).
+The figures are drawn by `notebooks/figures_*.py` in the style of the paper.
 
-## The tables
+## Data
 
-Scoring needs the compiled sum-store, one file pair per loudness node `u`
-(`sumstore_n120_u<UUUU.UU>.{meta.npz,lnS.npy}`). The full ladder
-(`u = 5..500`, 54 nodes) is ~30 GB, too large for the repository, so it
-lives on Zenodo. A run fetches only the nodes its template grid spans:
+* `data/results/`: the results behind Figs. 16 to 21 (nested-sampling runs, convergence, PP tests).
+* `data/year/`: the results of the year analysis used in notebook 4 (posterior samples, Bayes factors of single segments,
+  Bayes factors against the observing time, information of single segments). To be downloaded from Zenodo (link to follow).
+* `tables/`: the summed tables of notebooks 2 and 3, one file pair per filter power (`sumstore_n<n_max>_u<u>.lnS.npy` and
+  `.meta.npz`, about 17 GB for $n_{\max} = 120$). To be downloaded from Zenodo (link to follow).
+* `data/psd/`: noise curves.
 
-```python
-from fetch_tables import ensure_nodes
-stems = ensure_nodes(u_lo=40, u_hi=90)   # downloads the missing nodes
-```
+## Building the tables
 
-Set the record with `export EXMARG_ZENODO=<record id>` (the record id
-will be published with the archive), or point `EXMARG_STORE` at a local
-build to skip the download.
-
-### Calculating the tables
-
-`scripts/build_store.py` builds the store from scratch on a sky and
-orientation quadrature:
+`notebooks/01_tables.ipynb` builds low-order tables in seconds. The tables of the analysis (orders up to 120) are built with
+the same function by the scripts
 
 ```
-python scripts/build_store.py 120 16 32          # n_max, nside, workers
+python scripts/build_store.py 120 32 64        # W tables: n_max, nside, workers
+python scripts/build_kstore.py ...             # one kernel per order
+python scripts/derive_sumstores.py 120 ...     # the summed tables
 ```
-
-The tables encode the noise geometry, so they are specific to the detector
-noise they were built with. The shipped curves are selected with
-`exmarg.detectors.set_curve('aplus' | 'o4' | 'design' | 'ajith')`, tabulated
-in `data/psd/`; the paper and the shipped ladder use the A+ design
-sensitivity. For any other noise power spectral density, add your curve
-and rebuild.
 
 ## Layout
 
 ```
 src/exmarg/
-  detectors.py   detector geometry, antenna patterns, PSD registry
-  profiles.py    the intrinsic template a_nu, Psi_0
-  data.py        segments and the matched-filter series z
-  numerics.py    the log-arithmetic armor (no physics)
-  tables.py      the W tables: sky/orientation/distance averages
-  kernel.py      lookup tables compiled from W; scoring is lookups
-  evaluate.py    Evaluator, SumEvaluator, grid scans, emcee
-  figstyle.py    shared figure style
-examples/        the notebooks above + fetch_tables + shipped plot data
-scripts/         table construction (build_store, merge, kstore, sumstores)
-tests/           unit and invariant tests (pytest)
-paper/           the paper (prd.tex + compiled prd.pdf)
+  detectors.py   detector positions, antenna patterns, noise curves
+  profiles.py    the waveform (IMRPhenomXAS) of a template
+  data.py        simulated segments and the matched-filter outputs
+  numerics.py    numerical helpers
+  priors.py      the distance prior of the tables
+  tables.py      the W tables
+  kernel.py      lookup tables compiled from W
+  evaluate.py    the likelihood ratio of a segment for any template
+  geometry.py    the GORFs in frequency and the truncation deficit
+  pp.py          probability-probability test
+  compare.py     the same segment with bilby/dynesty
+notebooks/       the notebooks and their figure functions
+scripts/         construction of the production tables
+tests/           tests (pytest)
 ```
-
-## Citation
-
-The formalism and its companion (the single-event kernel of Figures 1-2)
-are described in the paper; please cite it if you use this code.

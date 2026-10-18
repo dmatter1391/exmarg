@@ -50,17 +50,18 @@ def Fplus_Fcross(I, theta, phi, psi):
 
 from pathlib import Path as _Path
 
-# selectable noise curve: 'ajith' is the historical analytic fit,
-# the others interpolate the tabulated LIGO amplitude spectral
-# densities under data/psd (aplus: T2000012 AplusDesign, o4:
-# aligo_O4high, design: T1800044 aLIGODesign).  set_curve() switches
-# the module; every case built afterwards carries the chosen curve in
-# its sig2, and the evaluation side follows the case, so generation
-# and processing cannot disagree within one dataset.
+# selectable noise curve: 'ajith' is an analytic fit, the others
+# interpolate the tabulated LIGO amplitude spectral densities under
+# data/psd (aplus: T2000012 AplusDesign, o4: aligo_O4high, design:
+# T1800044 aLIGODesign, o4_gw250207: the LIGO Livingston O4 curve
+# around GW250207 used for the simulations of the paper).  set_curve()
+# switches the module; every case built afterwards carries the chosen
+# curve in its sig2, and the evaluation uses the curve of the case.
 CURVE = 'ajith'
 _PSD_DIR = _Path(__file__).resolve().parents[2] / 'data' / 'psd'
 _PSD_FILES = {'aplus': 'AplusDesign.txt', 'o4': 'aligo_O4high.txt',
-              'design': 'aLIGODesign.txt'}
+              'design': 'aLIGODesign.txt',
+              'o4_gw250207': 'O4_GW250207.txt'}
 _TAB = {}
 
 
@@ -93,7 +94,8 @@ def S(I, f, f_low=10.0):
         return np.where(f >= f_low, out, np.inf)
     lf, ls = _table(CURVE)
     lo = max(f_low, np.exp(lf[0]))
-    inside = (f >= lo) & (f <= np.exp(lf[-1]))
+    # the table edges come back from exp(log f) with round-off: a relative margin keeps the band edge bins
+    inside = (f >= lo * (1 - 1e-12)) & (f <= np.exp(lf[-1]) * (1 + 1e-12))
     out = np.full(f.shape, np.inf)
     out[inside] = np.exp(np.interp(np.log(f[inside]), lf, ls))
     return out

@@ -17,8 +17,7 @@ storage is in OFFSET TAYLOR UNITS — rows carry 1/(n!)^2 times
 exp(o_n) (numerics.ln_offset) — so every stored number is O(1) at
 every order.  the arithmetic armor lives in numerics.py.
 
-quadrature: HEALPix sky (nside 16 required — 8 biases ln Lambda by
-~0.1 on injected data), uniform psi (n_psi = 2N+3, exact), Gauss-
+quadrature: HEALPix sky (nside 16 or finer), uniform psi (n_psi = 2N+3, exact), Gauss-
 Legendre chi (n_chi = N+3).  chi -> -chi makes W real and (a,b)
 symmetric; only b <= a stored.  u1, u2 arrays build a whole u-node
 ladder in ONE sweep (responses and powers shared between nodes).

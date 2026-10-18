@@ -26,3 +26,5 @@ from .kernel import (Kernel, SumKernel, sum_lnlam_pair,
                      save_sumstore, load_sumstore)
 from .evaluate import (Evaluator, SumEvaluator, load_store,
                        mc_q_to_m1m2, zeta)
+from .priors import use_distance_prior, madau_dickinson_ymin
+from . import detectors, geometry

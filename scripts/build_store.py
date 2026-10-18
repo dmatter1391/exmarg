@@ -4,8 +4,7 @@ quadrature sweep.
     python scripts/build_store.py [N] [nside] [workers] [u_lo] [u_hi] [step]
 
 defaults: N=120, nside=8, workers=32, u ladder 5 .. 250 with x1.15
-log spacing (the calibrated spacing for |dlnLambda| <= 0.004), fixed
-ymin = 0.4.  one npz per node, float32 rows, Taylor units (norm
+log spacing, fixed ymin = 0.4.  one npz per node, float32 rows, Taylor units (norm
 flag); evaluate.load_store refuses stores without the flag.  worker
 memory is bounded by shrinking the pixel chunk with N.
 """

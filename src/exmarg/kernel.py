@@ -206,13 +206,10 @@ class SumKernel:
 def _eval_row(r, A0, A1, lqH, lqL, phH, phL, tau_idx, it, sh0, sh1,
               lnq00, lnq01, dlq, nq, nphi, out0, out1):
     '''one tau row of the fused two-node evaluation.  the log
-    magnitudes and phases arrive PRECOMPUTED PER SAMPLE (they only
-    depend on the 16k time samples, not on the 400k (tau, t) pairs
-    — the per-element atan2+log were HALF the sweep, measured
-    114 -> 48 ms); the node difference is only the constant
-    ln sqrt(u_node/u) shift, and all 8 trilinear corners of both
-    tables are read in the same pass (8 in-flight reads overlap
-    their latencies — fewer corners measured SLOWER).'''
+    magnitudes and phases arrive precomputed per time sample; the
+    node difference is only the constant ln sqrt(u_node/u) shift,
+    and all 8 trilinear corners of both tables are read in the same
+    pass.'''
     ntw = it.size
     n_time = lqH.size
     for c in range(ntw):
@@ -282,8 +279,7 @@ def sum_lnlam_pair(sk0, sk1, z, u, t_center, half_width,
     '''ln Lambda from a bracketing SumKernel pair, fused runtime:
     evaluates both nodes in one sweep and interpolates in ln u.
     pass the same kernel twice for a single-node evaluation.
-    parallel=True uses the prange sweep (measured near-ideal
-    scaling; keep False when many events share one node).'''
+    parallel=True spreads the sweep over the CPU cores.'''
     t = np.arange(sk0.n_time) * (sk0.T / sk0.n_time)
     it = np.nonzero(np.abs(t - t_center) <= half_width)[0]
     out0 = np.empty((sk0.tau_idx.size, it.size))
@@ -335,11 +331,8 @@ def load_kstore(stem):
 
 def save_sumstore(sk, n_max, root, tag=''):
     '''write a SumKernel as raw .npy (lnS, mmap friendly) + a tiny
-    meta npz.  compressed npz was measured at 1-2 min/GB to reopen;
-    raw npy + mmap opens instantly and node-local page cache is
-    SHARED between PE workers reading the same table.  tag marks
-    families built with a different q-grid top (e.g. a loud event
-    whose |z| exceeds the base family's coverage).'''
+    meta npz; the raw npy opens instantly through mmap.  tag marks
+    families built with a different q-grid top.'''
     stem = root / ('sumstore_n%03d%s_u%07.2f' % (n_max, tag,
                                                  sk.u_node))
     np.save(str(stem) + '.lnS.npy', sk.lnS)
