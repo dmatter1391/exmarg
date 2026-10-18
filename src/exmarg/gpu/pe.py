@@ -64,46 +64,72 @@ def _node_geometry(bank, st, ymin):
 
 
 def _to_source_frame(lamN, yN, Mdet, yq, m1, z):
-    """node values (n_node + 1, n_template) -> ln Lambda on (m1, z): linear in y
-    per template, then linear in M_det = 2 m1 (1 + z) per z"""
-    nm = Mdet.size
-    surf = np.full((nm, z.size), -np.inf)
-    for m in range(nm):
-        v = np.isfinite(lamN[:, m]) & (yN[:, m] > 0)
-        if v.sum() < 2:
-            continue
-        yv, Lv = yN[v, m], lamN[v, m]
-        o = np.argsort(yv)
-        yv, Lv = yv[o], Lv[o]
-        _, iu = np.unique(yv, return_index=True)
-        yv, Lv = yv[iu], Lv[iu]
-        ins = (yq >= yv[0]) & (yq <= yv[-1])
-        surf[m] = np.where(ins, np.interp(yq, yv, Lv), -np.inf)
-    lam = np.full((m1.size, z.size), -np.inf)
-    Md = 2.0 * m1[:, None] * (1.0 + z[None, :])
-    for iz in range(z.size):
-        col = surf[:, iz]
-        good = np.isfinite(col)
-        if good.sum() < 2:
-            continue
-        mg = Mdet[good]
-        inb = (Md[:, iz] >= mg[0]) & (Md[:, iz] <= mg[-1])
-        lam[inb, iz] = np.interp(Md[inb, iz], mg, col[good])
-    return lam
+    """node values (n_node + 1, n_template) -> ln Lambda on (m1, z), on the device:
+    linear in y per template, then linear in M_det = 2 m1 (1 + z) per z, each
+    between the neighbouring finite values (as np.interp on the finite ones)"""
+    L = cp.asarray(lamN)
+    Y = cp.asarray(yN)
+    ok = cp.isfinite(L) & (Y > 0)
+    order = cp.argsort(cp.where(ok, Y, cp.inf), axis=0)
+    Ys = cp.take_along_axis(cp.where(ok, Y, cp.inf), order, axis=0)
+    Ls = cp.take_along_axis(L, order, axis=0)
+    n = ok.sum(axis=0)                                            # finite nodes per template
+    yq_ = cp.asarray(yq)
+    j = (Ys[:, None, :] <= yq_[None, :, None]).sum(axis=0) - 1    # (nz, nm): last node <= yq
+    lo = cp.clip(j, 0, cp.maximum(n - 2, 0)[None, :])
+    hi = cp.minimum(lo + 1, cp.maximum(n - 1, 0)[None, :])
+    cols = cp.arange(Ys.shape[1])[None, :]
+    y0, y1 = Ys[lo, cols], Ys[hi, cols]
+    v0, v1 = Ls[lo, cols], Ls[hi, cols]
+    t = cp.where(y1 > y0, (yq_[:, None] - y0) / cp.where(y1 > y0, y1 - y0, 1.0), 1.0)
+    ylast = Ys[cp.maximum(n - 1, 0), cp.arange(Ys.shape[1])][None, :]
+    inside = (n[None, :] >= 2) & (yq_[:, None] >= Ys[0][None, :]) & (yq_[:, None] <= ylast)
+    surf = cp.where(inside, v0 + t * (v1 - v0), -cp.inf)        # (nz, nm)
+
+    M = cp.asarray(Mdet)
+    good = cp.isfinite(surf)                                      # (nz, nm)
+    rank = cp.cumsum(good, axis=1)                                # good masses up to and including each index
+    ngood = rank[:, -1]
+    G = cp.zeros(surf.shape, cp.int64)                            # G[iz, r] = index of the r-th good mass
+    iz, im = cp.nonzero(good)
+    G[iz, rank[iz, im] - 1] = im
+    Md = 2.0 * cp.asarray(m1)[:, None] * (1.0 + cp.asarray(z))[None, :]   # (nm1, nz)
+    p = cp.searchsorted(M, Md.ravel()).reshape(Md.shape)          # masses with M_det < Md
+    zi = cp.arange(z.size)[None, :]
+    below = cp.where(p > 0, rank[zi, cp.maximum(p - 1, 0)], 0)    # good masses with M_det < Md
+    lo = G[zi, cp.clip(below - 1, 0, None)]
+    hi = G[zi, cp.minimum(below, cp.maximum(ngood - 1, 0)[None, :])]
+    lo = cp.where(below >= 1, lo, hi)
+    m0, m1_ = M[lo], M[hi]
+    w0, w1 = surf[zi, lo], surf[zi, hi]
+    t = cp.where(m1_ > m0, (Md - m0) / cp.where(m1_ > m0, m1_ - m0, 1.0), 0.0)
+    first = M[G[:, 0]][None, :]
+    last = M[G[zi[0], cp.maximum(ngood - 1, 0)]][None, :]
+    inb = (ngood[None, :] >= 2) & (Md >= first) & (Md <= last)
+    return cp.asnumpy(cp.where(inb, w0 + t * (w1 - w0), -cp.inf))
+
+
+def _on_device(store):
+    """all tables of the store as one device stack, copied once and kept"""
+    if getattr(store, "device", None) is None:
+        store.device = _store.upload(store.tables, store.tau_idx, store.beta[0], store.delta[0])
+    return store.device
 
 
 def _log_mean(lam, w):
-    """ln sum_i w_i exp(lam_i) for normalized weights w, lam = -inf allowed"""
-    fin = np.isfinite(lam) & (w > 0)
-    if not fin.any():
+    """ln sum_i w_i exp(lam_i) for normalized weights w, lam = -inf allowed (on the device)"""
+    lam, w = cp.asarray(lam), cp.asarray(w)
+    fin = cp.isfinite(lam) & (w > 0)
+    if not bool(fin.any()):
         return -np.inf
-    mx = lam[fin].max()
-    return mx + np.log(np.sum(w[fin] * np.exp(lam[fin] - mx)))
+    mx = cp.where(fin, lam, -cp.inf).max()
+    return float(mx + cp.log(cp.sum(cp.where(fin, w * cp.exp(cp.where(fin, lam, mx) - mx), 0.0))))
 
 
 def pe_redshift(segments, bank, store, rows=None, chunk=8, zmax=8.0, nz=1600,
                 m1_range=(3.0, 150.0), nm1=1600, ymin=0.1267, n_loud=1024, n_random=1024,
-                nodes_per_launch=6, block=256, seed=1234, mdet_range=(10.0, 500.0)):
+                nodes_per_launch=6, block=256, seed=1234, mdet_range=(10.0, 500.0), rest_order="time",
+                resident=False):
     """ln Lambda(m1_source, z) of each segment.
 
     segments          anything read_segments takes (see there)
@@ -122,6 +148,9 @@ def pe_redshift(segments, bank, store, rows=None, chunk=8, zmax=8.0, nz=1600,
     block             threads per block (256 when nodes_per_launch > 8 or so)
     seed              the j-th segment of each chunk draws with seed + j
     mdet_range        support of the ln B prior
+    rest_order        how select_times lists the times it draws from
+    resident          keep every table on the device across calls (needs
+                      about 40 GB of device memory on top of the batch)
 
     ln B averages Lambda over the prior uniform in M_det = 2 m1 (1+z) on
     mdet_range and proportional to D_L^2 in luminosity distance, i.e.
@@ -143,17 +172,33 @@ def pe_redshift(segments, bank, store, rows=None, chunk=8, zmax=8.0, nz=1600,
     out = np.full((seg["rows"].size, m1.size, z.size), -np.inf)
     for ev in _chunks(seg, chunk):
         traj = [_filter(bank, seg, e) for e in ev]
-        sel = [select_times(t, store.tau_idx, n_loud, n_random, seed + j) if use_sel else (None, None)
-               for j, t in enumerate(traj)]
+        sel = [select_times(t, store.tau_idx, n_loud, n_random, seed + j, rest_order=rest_order)
+               if use_sel else (None, None) for j, t in enumerate(traj)]
         lamN = np.full((len(ev), nn + 1, bank.M.size), -np.inf)
-        for ks in groups:
+        copy = cp.cuda.Stream(non_blocking=True)
+
+        def start(ks):
+            """copy the tables of a node group on the copy stream"""
+            with copy:
+                dev = _store.upload([store.tables[k] for k in ks], store.tau_idx,
+                                    store.beta[ks[0]], store.delta[ks[0]], stream=copy)
+            return dev, copy.record()
+
+        nxt = None if resident else start(groups[0])
+        for gi, ks in enumerate(groups):
             k0 = ks[0]
-            dev = _store.upload([store.tables[k] for k in ks], store.tau_idx,
-                                store.beta[k0], store.delta[k0])
+            if resident:
+                dev, base = dict(_on_device(store), beta=store.beta[k0], delta=store.delta[k0]), 0
+            else:
+                dev, ready = nxt
+                base = k0
+                cp.cuda.get_current_stream().wait_event(ready)
+                if gi + 1 < len(groups):
+                    nxt = start(groups[gi + 1])                # next group copies while this one computes
             ok = valid[ks]
             ids = np.nonzero(ok.any(axis=0))[0]
             lnaM = np.where(ok[:, ids], lna[ks][:, ids], 0.0).T
-            tab = np.tile(np.arange(len(ks), dtype=np.int32), (ids.size, 1))
+            tab = np.tile(np.arange(len(ks), dtype=np.int32) + (k0 - base), (ids.size, 1))
             bids = np.nonzero((bnode >= k0) & (bnode <= ks[-1]))[0]
             for j in range(len(ev)):
                 tsel, tlw = sel[j]
@@ -164,10 +209,11 @@ def pe_redshift(segments, bank, store, rows=None, chunk=8, zmax=8.0, nz=1600,
                         lamN[j, k, ids[keep]] = val[i][keep]
                 if bids.size:
                     val = kernel.gather(traj[j], dev, bids, blna[bids][:, None],
-                                        (bnode[bids] - k0)[:, None], tsel, tlw, block)
+                                        (bnode[bids] - base)[:, None], tsel, tlw, block)
                     lamN[j, nn, bids] = val[0]
             del dev
-            _store.free()
+        copy.synchronize()
+        _store.free()
         for j, e in enumerate(ev):
             out[e] = _to_source_frame(lamN[j], yN, bank.M, yq, m1, z)
         del traj, sel

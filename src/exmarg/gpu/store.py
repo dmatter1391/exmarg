@@ -107,13 +107,14 @@ def load_intrinsic_store(store_dir, pinned=True, readers=6):
                           tables=_read_tables(files, pinned, readers))
 
 
-def upload(tables, tau_idx, beta, delta):
-    """host tables -> one contiguous device stack, in the layout kernel.gather reads"""
+def upload(tables, tau_idx, beta, delta, stream=None):
+    """host tables -> one contiguous device stack, in the layout kernel.gather reads.
+    with a stream the copies from page-locked tables run asynchronously on it"""
     ntau, nphif, nb, nd = tables[0].shape
     tstride = int(tables[0].size)
     T = cp.empty(tstride * len(tables), np.float32)
     for i, Ti in enumerate(tables):
-        T[i * tstride:(i + 1) * tstride] = cp.asarray(np.ascontiguousarray(Ti, np.float32).ravel())
+        T[i * tstride:(i + 1) * tstride].set(np.ascontiguousarray(Ti, np.float32).ravel(), stream=stream)
     return dict(T=T, tau=cp.asarray(np.ascontiguousarray(tau_idx, np.int64)), tstride=tstride,
                 shape=(ntau, NPHI, nb, nd), beta=beta, delta=delta)
 
