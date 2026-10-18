@@ -189,7 +189,7 @@ def fig_corner_searches(P):
     """Fig. 6: catalog alone, uninformed and catalog-informed searches at rho_th = 8, n_max = 120; P = posteriors.npz."""
     S = {"ref": P["catalog_alone_th8"], "U": P["uninformed_th8_n120"], 120: P["informed_th8_n120"]}
     sty = {"ref": _region(CG), "U": _region("#D55E00"), 120: _region(COL[120])}
-    return _corner(S, sty, ["U", "ref", 120], CORNER_RANGES["searches"], legend=[("ref", "Catalog Alone"), ("U", "Uninformed"), (120, "Catalog Informed")],
+    return _corner(S, sty, ["U", "ref", 120], CORNER_RANGES["searches"], legend=[("ref", "Catalog Only"), ("U", "Uninformed"), (120, "Catalog Informed")],
                    injected=P["injected"])
 
 
@@ -202,7 +202,7 @@ def fig_corner_orders(P, search):
         sty[80] = _region(COL[80], fill=False, ls=(0, (5, 5)))
     draw = [20, 40] + ([120, 80] if same else [80, 120]); legend = [(n, r"$n_{\max} = %d$" % n) for n in (20, 40, 80, 120)]
     if search.startswith("informed"):
-        S["ref"] = P["catalog_alone_" + search.split("_")[1]]; sty["ref"] = _region(CG); draw = ["ref"] + draw; legend = [("ref", "Catalog Alone")] + legend
+        S["ref"] = P["catalog_alone_" + search.split("_")[1]]; sty["ref"] = _region(CG); draw = ["ref"] + draw; legend = [("ref", "Catalog Only")] + legend
     return _corner(S, sty, draw, CORNER_RANGES[search], legend=legend, injected=P["injected"])
 
 
@@ -232,7 +232,7 @@ def fig_population_searches(P):
     p0 = dict(GWTC5_MEDIAN, mmax=200.0); tr = P["injected"]
     fig, (am, a) = plt.subplots(1, 2, figsize=(7.0, 2.9))
     cat = (_rate_band(P["catalog_alone_th8"]), _mass_band(P["catalog_alone_th8"], p0))
-    hs = [plt.Rectangle((0, 0), 1, 1, fc=mc.to_rgba(CG, 0.3), ec=CG, lw=1.9)]; ls = ["Catalog Alone"]
+    hs = [plt.Rectangle((0, 0), 1, 1, fc=mc.to_rgba(CG, 0.3), ec=CG, lw=1.9)]; ls = ["Catalog Only"]
     for key, col, lab in (("uninformed_th8_n120", "#D55E00", "Uninformed"), ("informed_th8_n120", "#0072B2", "Catalog Informed")):
         if key.startswith("informed"):
             for ax_, x_, (lo, hi) in ((a, ZG, cat[0]), (am, MG, cat[1])):
@@ -277,7 +277,7 @@ def fig_rate_versions(P):
     hs = [plt.Rectangle((0, 0), 1, 1, fc=mc.to_rgba(COL[n], 0.3), ec=COL[n], lw=1.8) if n != 80 else Line2D([], [], color=COL[n], lw=1.8, ls=(0, (2.6, 0.9)))
           for n in orders]
     hs += [plt.Rectangle((0, 0), 1, 1, fc=mc.to_rgba(CG, 0.3), ec=CG, lw=1.8), Line2D([], [], color="k", lw=1.2, ls=":")]
-    fig.legend(hs, [r"$n_{\max} = %d$" % n for n in orders] + ["Catalog Alone", "Injected"], frameon=False, loc="lower center", ncol=3,
+    fig.legend(hs, [r"$n_{\max} = %d$" % n for n in orders] + ["Catalog Only", "Injected"], frameon=False, loc="lower center", ncol=3,
                handlelength=1.7, columnspacing=1.6, bbox_to_anchor=(0.54, -0.02), fontsize=9.5, labelspacing=0.35)
     fig.subplots_adjust(left=0.095, right=0.985, top=0.87, bottom=0.34, wspace=0.07)
     plt.close(fig)
