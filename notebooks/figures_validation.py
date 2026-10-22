@@ -395,3 +395,67 @@ def fig_corner_2p(d, rho):
         fig.canvas.draw()
     plt.close(fig)
     return fig
+
+
+def fig_corner_cogwheel(panels):
+    """posteriors of (chirp mass, mass ratio, spin): ours (grid samples) and cogwheel (weighted samples), one corner per
+    segment.  panels = list of dicts with ours_<k>, cog_<k>, cog_weight, true_<k> for k in Mc, q, chi, and rho."""
+    OURS, SAMP, GREY = figstyle.NAVY, figstyle.RED, '0.35'
+    KEYS = ['Mc', 'q', 'chi']
+    LAB = {'Mc': r'$\mathcal{M}_c$', 'q': r'$q$', 'chi': r'$\chi_{\rm eff}$'}
+    n = len(KEYS)
+    with _style():
+        fig = plt.figure(figsize=(4.0 * len(panels), 4.6))
+        outer = GridSpec(1, len(panels), figure=fig, wspace=0.25, left=0.08, right=0.98, top=0.86, bottom=0.2)
+        for b, d in enumerate(panels):
+            OUR = {k: np.asarray(d['ours_' + k]) for k in KEYS}
+            S = {k: np.asarray(d['cog_' + k]) for k in KEYS}
+            wb = np.asarray(d['cog_weight'])
+            TRU = {k: float(d['true_' + k]) for k in KEYS}
+
+            def wq(x, w, p):
+                o = np.argsort(x); c = np.cumsum(w[o]); return np.interp(p * c[-1], c, x[o])
+
+            def rng_(k):
+                lo = min(wq(S[k], wb, 0.003), np.percentile(OUR[k], 0.3), TRU[k])
+                hi = max(wq(S[k], wb, 0.997), np.percentile(OUR[k], 99.7), TRU[k])
+                pad = 0.08 * (hi - lo)
+                return lo - pad, hi + pad
+
+            gs = GridSpecFromSubplotSpec(n, n, subplot_spec=outer[b], wspace=0.08, hspace=0.08)
+            for i in range(n):
+                for j in range(i + 1):
+                    ax = fig.add_subplot(gs[i, j]); kx, ky = KEYS[j], KEYS[i]; rx, ry = rng_(kx), rng_(ky)
+                    if i == j:
+                        ax.hist(S[kx], bins=30, range=rx, weights=wb, density=True, histtype='step', color=SAMP, lw=1.5)
+                        ax.hist(OUR[kx], bins=30, range=rx, density=True, histtype='step', color=OURS, lw=1.8)
+                        ax.axvline(TRU[kx], color=GREY, lw=0.8)
+                        ax.set_yticks([])
+                    else:
+                        for x, y, w, col in ((S[kx], S[ky], wb, SAMP), (OUR[kx], OUR[ky], None, OURS)):
+                            H, xe, ye = np.histogram2d(x, y, bins=26, range=[rx, ry], weights=w)
+                            H = gaussian_filter(H, 1.0); H /= H.sum(); lv = _levels(H)
+                            if lv:
+                                ax.contour(0.5 * (xe[1:] + xe[:-1]), 0.5 * (ye[1:] + ye[:-1]), H.T, levels=lv,
+                                           colors=[col], linewidths=(1.0, 1.8))
+                        ax.axvline(TRU[kx], color=GREY, lw=0.8); ax.axhline(TRU[ky], color=GREY, lw=0.8)
+                    ax.set_xlim(rx)
+                    if i != j:
+                        ax.set_ylim(ry)
+                    ax.tick_params(labelsize=8)
+                    ax.xaxis.set_major_locator(MaxNLocator(3)); ax.yaxis.set_major_locator(MaxNLocator(3))
+                    if i == n - 1:
+                        ax.set_xlabel(LAB[kx], fontsize=12)
+                    else:
+                        ax.set_xticklabels([])
+                    if j == 0 and i > 0:
+                        ax.set_ylabel(LAB[ky], fontsize=12)
+                    elif j > 0:
+                        ax.set_yticklabels([])
+            fig.text(0.08 + (b + 0.5) * 0.9 / len(panels), 0.9, r'SNR $= %.1f$' % d['rho'], fontsize=12, ha='center')
+        fig.legend(handles=[plt.Line2D([], [], color=OURS, lw=1.8, label='This Work'),
+                            plt.Line2D([], [], color=SAMP, lw=1.5, label='cogwheel'),
+                            plt.Line2D([], [], color=GREY, lw=0.8, label='True Value')],
+                   loc='lower center', frameon=False, fontsize=11, ncol=3)
+    plt.close(fig)
+    return fig

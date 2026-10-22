@@ -11,7 +11,10 @@ cogwheel marginalizes the arrival time as an integral over seconds (its sky prio
 ln Lambda exceeds ours by ln(t_range width) = ln 3.9; the run ends with the same converged setting on half the window,
 which moves ln Lambda by -ln 2 if that is the only difference.
 
-    python scripts/run_cogwheel.py <row> <M_det> <q> <chi> [n_calls=20]     (pip install cogwheel-pe; we used 1.6.0)
+    python scripts/run_cogwheel.py <row> <M_det> <q> <chi> [n_calls=20] [n_settings=8]     (pip install cogwheel-pe; we used 1.6.0)
+
+n_settings < 8 stops the ladder early (at large SNR the finest settings take minutes per call); the half-window check then
+uses the last setting reached instead of the seventh.
     -> data/results/cogwheel_row<row>.npz
 """
 import os
@@ -66,6 +69,7 @@ def event_data(seg, row, half_width, name):
 def main():
     row, M, q, chi = int(sys.argv[1]), float(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4])
     n_calls = int(sys.argv[5]) if len(sys.argv) > 5 else 20
+    n_settings = int(sys.argv[6]) if len(sys.argv) > 6 else 8
     seg = np.load(os.path.join(ROOT, 'data', 'segments', 'three_parameters.npz'))
     T = float(seg['T'])
     Mt, qt = float(seg['true_M_det'][row]), float(seg['true_q'][row])
@@ -90,7 +94,7 @@ def main():
     for _ in range(3):
         t0 = time.perf_counter(); build(50, 15, tr); tc.append(time.perf_counter() - t0)
     print('row %d, template M %.2f q %.3f chi %.3f: construction %.2f s' % (row, M, q, chi, np.median(tc)), flush=True)
-    ladder = [(50, 15), (100, 16), (200, 17), (500, 19), (1000, 19), (2000, 19), (10 ** 6, 19), (10 ** 6, 20)]
+    ladder = [(50, 15), (100, 16), (200, 17), (500, 19), (1000, 19), (2000, 19), (10 ** 6, 19), (10 ** 6, 20)][:n_settings]
     rows = []
     for neff, cap in ladder:
         L = build(neff, cap, tr)
@@ -99,12 +103,13 @@ def main():
         rows.append((neff, cap, v.mean(), v.std(), dt))
         print('  target n_eff %7d, at most 2^%d samples: ln Lambda %.4f, std %.4f, %.3f s per call'
               % (neff, cap, v.mean(), v.std(), dt), flush=True)
-    L = build(10 ** 6, 19, (tr[0] / 2, tr[1] / 2))
+    half_index = min(6, len(ladder) - 1)
+    L = build(*ladder[half_index], (tr[0] / 2, tr[1] / 2))
     half = np.array([L.lnlike(tmpl) for _ in range(5)])
-    print('  half window: ln Lambda %.4f, std %.4f (whole window %.4f)' % (half.mean(), half.std(), rows[6][2]), flush=True)
+    print('  half window: ln Lambda %.4f, std %.4f (whole window %.4f)' % (half.mean(), half.std(), rows[half_index][2]), flush=True)
     np.savez(os.path.join(ROOT, 'data', 'results', 'cogwheel_row%d.npz' % row), template=np.array([M, q, chi]),
              construction_s=np.median(tc), ladder=np.array(rows, float), half_window=half,
-             t_range_width=tr[1] - tr[0], n_calls=n_calls)
+             t_range_width=tr[1] - tr[0], n_calls=n_calls, half_index=half_index)
 
 
 if __name__ == '__main__':

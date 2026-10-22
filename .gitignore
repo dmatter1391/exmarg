@@ -42,6 +42,7 @@ data/year/
 !scripts/
 !scripts/run_bilby.py
 !scripts/run_cogwheel.py
+!scripts/run_cogwheel_pe.py
 !scripts/compute_convergence.py
 !scripts/fetch_tables.py
 !scripts/build_tables/
