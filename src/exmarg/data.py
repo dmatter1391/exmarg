@@ -1,9 +1,8 @@
 """
 SIMULATION ONLY: synthetic segments for tests and calibration.
 
-this module never touches the processing chain — real data enters
-the pipeline directly at evaluate.zeta, and nothing here is imported
-by the evaluation side.  generation and processing must never mix.
+nothing here is imported by the analysis (exmarg.search), which reads
+segments from files: generation and processing never mix.
 """
 
 import numpy as np

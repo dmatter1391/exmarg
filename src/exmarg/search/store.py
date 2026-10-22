@@ -1,13 +1,11 @@
 """
-the (beta, Delta) tables, read once into page-locked host memory and
-copied to the device in groups.
+the (beta, Delta) tables, read once into host memory; for the GPU in
+page-locked memory, copied to the device in groups.
 
-redshift store   bd_*.npz, one file per signal power node s, members
+redshift store   bd_*.npz, one file per signal power node s = u y^2, members
                  T (tau, phi+, beta, Delta) float32, beta, delta,
-                 tau_idx, alpha (amplitude axis), s_node
-intrinsic store  ugrid.npz (u: template powers) and marg_uNN.npz, one
-                 file per u, members T, beta, delta, tau_idx; the
-                 distance is already integrated into each table
+                 tau_idx, alpha (amplitude axis), s_node; the distance
+                 is a parameter, its prior is applied by the analysis
 """
 
 import glob
@@ -18,7 +16,6 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
-import cupy as cp
 
 NPHI = 96                 # phase bins of the full circle; the tables hold NPHI/2 + 1
 
@@ -39,11 +36,28 @@ def read_npz_member(path, name):
     return arr.reshape(shape, order="F" if fortran else "C")
 
 
+def map_npz_member(path, name):
+    """read-only memory map of one uncompressed .npy member of an npz (nothing is read until used)"""
+    info = zipfile.ZipFile(path).getinfo(name)
+    if info.compress_type != 0:
+        raise ValueError("member %s of %s is compressed" % (name, path))
+    with open(path, "rb") as fh:
+        fh.seek(info.header_offset)
+        nlen, elen = struct.unpack("<HH", fh.read(30)[26:30])
+        fh.seek(info.header_offset + 30 + nlen + elen)
+        ver = np.lib.format.read_magic(fh)
+        rd = np.lib.format.read_array_header_1_0 if ver == (1, 0) else np.lib.format.read_array_header_2_0
+        shape, fortran, dtype = rd(fh)
+        offset = fh.tell()
+    return np.asarray(np.memmap(path, dtype=dtype, mode="r", offset=offset, shape=shape, order="F" if fortran else "C"))
+
+
 def _read_table(path, pinned):
     """the T member of one store file, in page-locked memory when pinned (pageable if that fails)"""
     T = read_npz_member(path, "T.npy")
     if not pinned:
         return T
+    import cupy as cp
     try:
         buf = cp.cuda.alloc_pinned_memory(T.nbytes)
     except Exception:
@@ -53,14 +67,16 @@ def _read_table(path, pinned):
     return P
 
 
-def _read_tables(files, pinned, readers):
+def _read_tables(files, pinned, readers, mmap=False):
+    if mmap:
+        return [map_npz_member(f, "T.npy") for f in files]
     with ThreadPoolExecutor(max_workers=readers) as ex:
         return list(ex.map(lambda f: _read_table(f, pinned), files))
 
 
 @dataclass
 class RedshiftStore:
-    """signal power nodes s (sorted), their amplitude axis limits, grids and host tables"""
+    """signal power nodes s (sorted), their amplitude axis limits, grids, host tables and the truncation order"""
     s: np.ndarray
     alpha_lo: np.ndarray
     alpha_hi: np.ndarray
@@ -68,20 +84,13 @@ class RedshiftStore:
     delta: list
     tau_idx: np.ndarray
     tables: list
+    n_max: int
 
 
-@dataclass
-class IntrinsicStore:
-    """template powers u (sorted), grids and host tables"""
-    u: np.ndarray
-    beta: np.ndarray
-    delta: np.ndarray
-    tau_idx: np.ndarray
-    tables: list
-
-
-def load_redshift_store(store_dir, pinned=True, readers=6):
-    """every node of the redshift store in host memory (about 0.75 GB per node)"""
+def load_redshift_store(store_dir, pinned=False, readers=6, mmap=False):
+    """every node of the redshift store in host memory (about 0.75 GB per node);
+    pinned=True puts them in page-locked memory for fast copies to the GPU, mmap=True
+    maps them from disk instead of reading them (CPU)"""
     files = glob.glob(os.path.join(store_dir, "bd_*.npz"))
     if not files:
         raise FileNotFoundError("no bd_*.npz in %s" % store_dir)
@@ -94,22 +103,14 @@ def load_redshift_store(store_dir, pinned=True, readers=6):
     s, alo, ahi, beta, delta, tau, files = zip(*head)
     return RedshiftStore(s=np.array(s), alpha_lo=np.array(alo), alpha_hi=np.array(ahi),
                          beta=list(beta), delta=list(delta), tau_idx=tau[0],
-                         tables=_read_tables(files, pinned, readers))
-
-
-def load_intrinsic_store(store_dir, pinned=True, readers=6):
-    """every table of the intrinsic store in host memory (about 1.4 GB per table)"""
-    u = np.load(os.path.join(store_dir, "ugrid.npz"))["u"]
-    files = [os.path.join(store_dir, "marg_u%02d.npz" % i) for i in range(u.size)]
-    with np.load(files[0]) as h:
-        beta, delta, tau = h["beta"], h["delta"], h["tau_idx"]
-    return IntrinsicStore(u=u, beta=beta, delta=delta, tau_idx=tau,
-                          tables=_read_tables(files, pinned, readers))
+                         tables=_read_tables(files, pinned, readers, mmap),
+                         n_max=int(os.path.basename(files[0]).split("_n")[1].split("_")[0]))
 
 
 def upload(tables, tau_idx, beta, delta, stream=None):
     """host tables -> one contiguous device stack, in the layout kernel.gather reads.
     with a stream the copies from page-locked tables run asynchronously on it"""
+    import cupy as cp
     ntau, nphif, nb, nd = tables[0].shape
     tstride = int(tables[0].size)
     T = cp.empty(tstride * len(tables), np.float32)
@@ -121,5 +122,6 @@ def upload(tables, tau_idx, beta, delta, stream=None):
 
 def free():
     """return the device and page-locked staging pools to the system"""
+    import cupy as cp
     cp.get_default_memory_pool().free_all_blocks()
     cp.get_default_pinned_memory_pool().free_all_blocks()

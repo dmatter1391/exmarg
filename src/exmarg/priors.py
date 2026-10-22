@@ -27,6 +27,16 @@ _LNA = np.linspace(np.log(1e-6), np.log(1e6), 4001)
 _CACHE = {}
 
 
+def distance_density(name):
+    """the density of ln y of a named distance prior on a grid, as the analysis integrates it:
+    None for 'volume' (closed form), (lny, p_lny) for 'madau-dickinson'"""
+    if name == 'volume':
+        return None
+    if name == 'madau-dickinson':
+        return _LNY, _P_LNY
+    raise ValueError("the distance prior is 'volume' or 'madau-dickinson', not %r" % name)
+
+
 def madau_dickinson_ymin():
     """the smallest y = D0 / D of the Madau-Dickinson prior (the distance at z = 10)"""
     return float(_POP['ymin'])

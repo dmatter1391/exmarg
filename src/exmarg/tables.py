@@ -10,8 +10,8 @@ direction, polarization, inclination and distance of (detector
 response monomial) x (distance damping).  the Taylor expansion of
 the Bessel function, I0(2v) = sum v^{2n}/(n!)^2 exactly, is what
 splits the likelihood into these data-independent tables and the
-data; the truncation order N is the only approximation knob
-(taylor_order picks it from data, noise_mean prices it).
+data; the truncation order N is the only approximation, and
+noise_mean gives the noise mean that the dropped orders remove.
 
 storage is in OFFSET TAYLOR UNITS — rows carry 1/(n!)^2 times
 exp(o_n) (numerics.ln_offset) — so every stored number is O(1) at
@@ -31,18 +31,6 @@ from scipy.special import gammaln
 from .detectors import c, x, basis, Fplus_Fcross
 from .numerics import (A_FLOOR_X, bounded_exp, ln_moment_n,
                        ln_offset, moments)
-
-
-def taylor(N):
-    '''absolute Taylor coefficients 1/(n!)^2 (reference only; stores
-    already carry them, runtime weights are ones)'''
-    return np.exp(-2 * gammaln(np.arange(N + 1) + 1.0))
-
-
-def taylor_order(qmax, u, margin=5.0):
-    '''smallest converged truncation: terms ~ r^n/n!, r <= 2 qmax^2/u'''
-    r = 2.0 * qmax**2 / u
-    return int(np.ceil(r + margin * np.sqrt(max(r, 1.0))))
 
 
 def patterns(n_max):
