@@ -9,8 +9,10 @@ pe_intrinsic  (M_det, q, chi) on a template bank, the distance
 
 both return ln Lambda, the likelihood ratio against noise marginalized
 over the sky position, orientation, polarization, phase and arrival
-time, and ln B, its prior average.  Every arrival time of the segment
-and every lag of the tables enters the sum of gather.py.
+time, and ln B, its prior average.  The sum over arrival times of
+gather.py runs, by default, over the n_loud loudest times of each template
+plus n_random times drawn from the rest (gather.select_times); n_loud = 0
+sums over every arrival time.
 """
 
 import numpy as np
@@ -152,10 +154,10 @@ def _tables(store, ks, beta, delta, bank, resident):
     return _store.upload([store.tables[k] for k in ks], store.tau_idx, beta, delta), ks[0]
 
 
-def _read(bank, traj, tab, ids, lna, tab_ids, block):
+def _read(bank, traj, tab, ids, lna, tab_ids, block, times):
     if bank.device == "cpu":
-        return _gather.gather_cpu(traj, tab, ids, lna, tab_ids)
-    return _gather.gather_gpu(traj, tab, ids, lna, tab_ids, block)
+        return _gather.gather_cpu(traj, tab, ids, lna, tab_ids, times)
+    return _gather.gather_gpu(traj, tab, ids, lna, tab_ids, block, times)
 
 
 def _release(bank):
@@ -163,12 +165,15 @@ def _release(bank):
         _store.free()
 
 
-def _node_values(bank, seg, ev, store, geometry, groups, block, resident):
+def _node_values(bank, seg, ev, store, geometry, groups, block, resident, n_loud, n_random, seed):
     """ln Lambda of every template at every node of the redshift store, for the segments ev:
     (len(ev), n_node + 1, n_template), row n_node the boundary point at the smallest amplitude"""
     valid, lna, _, bnode, blna = geometry
     nn = store.s.size
     traj = [_filter(bank, seg, e) for e in ev]
+    xp = array_module(bank.device)
+    times = [_gather.select_times(t, store.tau_idx, n_loud, n_random, seed + int(seg["rows"][e]), xp) if n_loud > 0 else None
+             for t, e in zip(traj, ev)]
     lamN = np.full((len(ev), nn + 1, bank.M.size), -np.inf)
     for ks in groups:
         k0 = ks[0]
@@ -180,24 +185,24 @@ def _node_values(bank, seg, ev, store, geometry, groups, block, resident):
         bids = np.nonzero((bnode >= k0) & (bnode <= ks[-1]))[0]
         for j in range(len(ev)):
             if ids.size:
-                val = _read(bank, traj[j], tab, ids, lnaM, tid, block)
+                val = _read(bank, traj[j], tab, ids, lnaM, tid, block, times[j])
                 for i, k in enumerate(ks):
                     keep = ok[i][ids]
                     lamN[j, k, ids[keep]] = val[i][keep]
             if bids.size:
-                val = _read(bank, traj[j], tab, bids, blna[bids][:, None], (bnode[bids] - base)[:, None], block)
+                val = _read(bank, traj[j], tab, bids, blna[bids][:, None], (bnode[bids] - base)[:, None], block, times[j])
                 lamN[j, nn, bids] = val[0]
         del tab
         if not resident:
             _release(bank)
-    del traj
+    del traj, times
     _release(bank)
     return lamN
 
 
 def pe_redshift(segments, bank, store, rows=None, chunk=8, zmax=8.0, nz=1600,
                 m1_range=(3.0, 150.0), nm1=1600, ymin=0.1267, nodes_per_launch=6, block=256,
-                mdet_range=(10.0, 500.0), resident=False):
+                mdet_range=(10.0, 500.0), resident=False, n_loud=1024, n_random=1024, seed=0):
     """ln Lambda(m1_source, z) of each segment.
 
     segments          anything read_segments takes (see there)
@@ -214,6 +219,9 @@ def pe_redshift(segments, bank, store, rows=None, chunk=8, zmax=8.0, nz=1600,
     block             GPU threads per block
     mdet_range        support of the ln B prior
     resident          GPU: keep every table on the device across calls
+    n_loud, n_random  arrival times visited per template (gather.select_times);
+                      n_loud = 0 visits all of them
+    seed              seed of the random draw (plus the segment index)
 
     ln B averages Lambda over the prior uniform in M_det = 2 m1 (1+z) on
     mdet_range and proportional to D_L^2 in luminosity distance, i.e.
@@ -235,7 +243,7 @@ def pe_redshift(segments, bank, store, rows=None, chunk=8, zmax=8.0, nz=1600,
     out = np.full((seg["rows"].size, m1.size, z.size), -np.inf)
     chunk = _fit_chunk(bank, store, chunk, nodes_per_launch, resident)
     for ev in _chunks(seg, chunk):
-        lamN = _node_values(bank, seg, ev, store, geometry, groups, block, resident)
+        lamN = _node_values(bank, seg, ev, store, geometry, groups, block, resident, n_loud, n_random, seed)
         for j, e in enumerate(ev):
             out[e] = _to_source_frame(lamN[j], geometry[2], bank.M, yq, m1, z, xp)
 
@@ -279,7 +287,7 @@ def distance_weights(y, prior, ymin):
 
 
 def pe_intrinsic(segments, bank, store, rows=None, prior="volume", ymin=0.1267, chunk=4,
-                 nodes_per_launch=6, block=256, resident=False):
+                 nodes_per_launch=6, block=256, resident=False, n_loud=1024, n_random=1024, seed=0):
     """ln Lambda of each template of the bank, the distance integrated over its prior.
 
     segments          anything read_segments takes (see there)
@@ -294,6 +302,9 @@ def pe_intrinsic(segments, bank, store, rows=None, prior="volume", ymin=0.1267, 
     nodes_per_launch  store nodes read in one gather
     block             GPU threads per block
     resident          GPU: keep every table on the device across calls
+    n_loud, n_random  arrival times visited per template (gather.select_times);
+                      n_loud = 0 visits all of them
+    seed              seed of the random draw (plus the segment index)
 
     each template reads the store at every node s it reaches, y = sqrt(s/u), and
     Lambda = sum_j w_j Lambda(y_j) with the weights of distance_weights.  ln B
@@ -318,7 +329,7 @@ def pe_intrinsic(segments, bank, store, rows=None, prior="volume", ymin=0.1267, 
     out = np.full((seg["rows"].size, bank.u.size), -np.inf)
     chunk = _fit_chunk(bank, store, chunk, nodes_per_launch, resident)
     for ev in _chunks(seg, chunk):
-        lamN = _node_values(bank, seg, ev, store, geometry, groups, block, resident)
+        lamN = _node_values(bank, seg, ev, store, geometry, groups, block, resident, n_loud, n_random, seed)
         for j, e in enumerate(ev):
             v = lnW + lamN[j]
             mx = v.max(axis=0)

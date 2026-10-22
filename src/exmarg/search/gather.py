@@ -5,7 +5,7 @@ the table read: for one template and one table, Eq. (C10) of the paper,
   beta  = ln a + 2 ln q_L(t),   Delta = ln q_H(t + tau) - ln q_L(t),
   dphi  = phi_H(t + tau) - phi_L(t),
 
-summed over every arrival time t of the segment and every lag tau of the
+summed over the arrival times t of the segment and every lag tau of the
 table, with q_I, phi_I the modulus and phase of the matched-filter output
 of detector I and a = s/u the ratio of the table's signal power to the
 template power (a = 1 for the intrinsic store).  lnS is read bilinearly in
@@ -15,6 +15,12 @@ beta is clamped to the table, ln q_L moves with it and ln q_H is kept.
 
 gather_cpu (numba, the (template, lag) pairs in parallel over the cores)
 and gather_gpu (cupy) compute the same sums and return the same array.
+
+By default the sum runs over every arrival time.  With times from
+select_times it runs over the loudest arrival times of each template, where
+almost all of a signal's contribution lies, plus a uniform random draw from
+the rest weighted to stand for all of them, so the sum is estimated without
+bias at a fraction of the cost.
 """
 
 import numpy as np
@@ -24,13 +30,14 @@ NPHI = 96                 # phase bins of the full circle; the tables hold NPHI/
 
 
 @numba.njit(parallel=True, cache=True)
-def _gather_cpu(lqH, phH, lqL, phL, mass_ids, tab_ids, tau_idx, tables, offbs, rdb, offd, rdd, out_m, out_s):
-    """running (max, sum) of exp(lnS) over every arrival time, for each (slot, lag, template)"""
+def _gather_cpu(lqH, phH, lqL, phL, mass_ids, tab_ids, tau_idx, tables, offbs, rdb, offd, rdd, sel, lw, use_sel, out_m, out_s):
+    """running (max, sum) of exp(lnS) over the arrival times (all, or sel[template] with log weights lw), for each (slot, lag, template)"""
     n_time = lqH.shape[1]
     ntau = tau_idx.size
     nsel, ns = tab_ids.shape
     nb = tables[0].shape[2]; nd = tables[0].shape[3]
     rph = NPHI / 6.283185307179586
+    n_walk = sel.shape[1] if use_sel else n_time
     for job in numba.prange(nsel * ntau):
         j = job // ntau
         r = job % ntau
@@ -39,7 +46,8 @@ def _gather_cpu(lqH, phH, lqL, phL, mass_ids, tab_ids, tau_idx, tables, offbs, r
         for n in range(ns):
             Tn = tables[tab_ids[j, n]]
             m = -1e300; s = 0.0
-            for t in range(n_time):
+            for k in range(n_walk):
+                t = sel[mid, k] if use_sel else k
                 i1 = t + tau0
                 if i1 >= n_time:
                     i1 -= n_time
@@ -81,6 +89,8 @@ def _gather_cpu(lqH, phH, lqL, phL, mass_ids, tab_ids, tau_idx, tables, offbs, r
                     v = (fb0 * (fd0 * Tn[r, ci, b0, d0] + fdf * Tn[r, ci, b0, d1])
                          + fbf * (fd0 * Tn[r, ci, b1, d0] + fdf * Tn[r, ci, b1, d1]))
                     acc += fci * v
+                if use_sel:
+                    acc += lw[mid, k]
                 if acc > m:
                     s = s * np.exp(m - acc) + 1.0
                     m = acc
@@ -101,7 +111,7 @@ def _offsets(lna, beta):
     return (np.ascontiguousarray(lna, np.float64) - float(beta[0])) / float(beta[1] - beta[0])
 
 
-def gather_cpu(traj, tables, mass_ids, lna, tab_ids):
+def gather_cpu(traj, tables, mass_ids, lna, tab_ids, times=None):
     """ln Lambda of (template, table) pairs on the CPU.
 
     traj      dict of float32 arrays lqH, phH, lqL, phL, each (n_template,
@@ -111,6 +121,7 @@ def gather_cpu(traj, tables, mass_ids, lna, tab_ids):
     mass_ids  (nsel,) template rows to evaluate
     lna       (nsel, NS) ln a = ln(s/u) of each (template, slot)
     tab_ids   (nsel, NS) index in tables['T'] of the table each slot reads
+    times     None (every arrival time) or select_times(...): (sel, lw)
 
     returns (NS, nsel) float64."""
     beta, delta = tables["beta"], tables["delta"]
@@ -121,9 +132,11 @@ def gather_cpu(traj, tables, mass_ids, lna, tab_ids):
     om = np.empty((ns, ntau, ids.size)); os_ = np.empty((ns, ntau, ids.size))
     T = numba.typed.List([np.ascontiguousarray(Ti, np.float32) for Ti in tables["T"]])
     ddelta = float(delta[1] - delta[0])
+    sel, lw = times if times is not None else (np.zeros((1, 1), np.int32), np.zeros((1, 1), np.float32))
     _gather_cpu(traj["lqH"], traj["phH"], traj["lqL"], traj["phL"], ids, tab,
                 np.ascontiguousarray(tables["tau"], np.int64).ravel(), T, _offsets(lna, beta),
-                2.0 / float(beta[1] - beta[0]), -float(delta[0]) / ddelta, 1.0 / ddelta, om, os_)
+                2.0 / float(beta[1] - beta[0]), -float(delta[0]) / ddelta, 1.0 / ddelta,
+                np.ascontiguousarray(sel, np.int32), np.ascontiguousarray(lw, np.float32), times is not None, om, os_)
     return _lse_lags(om, os_, traj["lqH"].shape[1], np)
 
 
@@ -136,6 +149,17 @@ _SRC = r"""
 #define CH __CH__
 #define NS __NS__
 #define NPHIF (__NPHI__/2 + 1)
+#define SEL __SEL__
+#define KS __KS__
+#if SEL
+#define TIME_OF(i) (sel[(long long)mid * KS + (i)])
+#define WEIGHT_OF(i) (lw[(long long)mid * KS + (i)])
+#define NWALK KS
+#else
+#define TIME_OF(i) (i)
+#define WEIGHT_OF(i) 0.0f
+#define NWALK NT
+#endif
 
 extern "C" __global__
 void gather(const float* __restrict__ lqH, const float* __restrict__ phH,
@@ -150,6 +174,8 @@ void gather(const float* __restrict__ lqH, const float* __restrict__ phH,
             const float rdd,                      // 1 / ddelta
             const long long tstride,
             const int ntau,
+            const int* __restrict__ sel,          // (n_template, KS) arrival times visited (SEL = 1)
+            const float* __restrict__ lw,         // (n_template, KS) their log weights
             double* __restrict__ out_m, double* __restrict__ out_s)
 {
     extern __shared__ unsigned char smem[];
@@ -171,14 +197,13 @@ void gather(const float* __restrict__ lqH, const float* __restrict__ phH,
     #pragma unroll
     for (int n = 0; n < NS; ++n) { m[n] = -1.0e30f; ssum[n] = 0.0f; }
 
-    const int NWALK = NT;
     for (int cs = 0; cs < NWALK; cs += CH) {
         // counting sort of this chunk of arrival times by phase bin
         for (int i = threadIdx.x; i < NPHI; i += BLK) cnt[i] = 0;
         __syncthreads();
         for (int q = threadIdx.x; q < CH; q += BLK) {
             if (cs + q >= NWALK) break;
-            int t = cs + q;
+            int t = TIME_OF(cs + q);
             int i1 = t + tau0; if (i1 >= NT) i1 -= NT;
             float x3 = (phH[base + i1] - phL[base + t]) * rph;
             if (x3 < 0.0f) x3 += (float)NPHI;
@@ -198,7 +223,8 @@ void gather(const float* __restrict__ lqH, const float* __restrict__ phH,
         for (int p = threadIdx.x; p < CH; p += BLK) {
             if (cs + p >= NWALK) break;
             int off = cs + (int)ordr[p];
-            int t = off;
+            int t = TIME_OF(off);
+            const float wt = WEIGHT_OF(off);
             int i1 = t + tau0; if (i1 >= NT) i1 -= NT;
             const float aH = lqH[base + i1], aL = lqL[base + t];
             const int qq = (int)ordr[p];
@@ -230,7 +256,7 @@ void gather(const float* __restrict__ lqH, const float* __restrict__ phH,
                     float v = fb0 * (fd0 * r0[d0] + fdf * r0[d1]) + fbf * (fd0 * r1[d0] + fdf * r1[d1]);
                     acc += fci * v;
                 }
-                float accd = acc;
+                float accd = acc + wt;
                 if (accd > m[n]) {
                     float sc = expf(m[n] - accd);
                     ssum[n] = ssum[n] * sc + 1.0f;
@@ -294,14 +320,14 @@ def _chunk(nphi):
     return ch
 
 
-def _compile(nb, nd, nphi, n_time, ns, ch, blk):
-    """compile (and cache) the GPU gather for one table geometry and slot count"""
+def _compile(nb, nd, nphi, n_time, ns, ch, blk, ks=0):
+    """compile (and cache) the GPU gather for one table geometry, slot count and number of selected times (0: all)"""
     import cupy as cp
-    key = (nb, nd, nphi, n_time, ns, ch, blk)
+    key = (nb, nd, nphi, n_time, ns, ch, blk, ks)
     if key not in _CACHE:
         src = _SRC
         for k, v in (("__NB__", nb), ("__ND__", nd), ("__NPHI__", nphi), ("__BLK__", blk),
-                     ("__NT__", n_time), ("__CH__", ch), ("__NS__", ns)):
+                     ("__NT__", n_time), ("__CH__", ch), ("__NS__", ns), ("__SEL__", int(ks > 0)), ("__KS__", max(ks, 1))):
             src = src.replace(k, str(v))
         shm = 7 * ch + 4 * nphi + 256             # ordr, cnt, cbin, fcs
         fn = cp.RawKernel(src, "gather")
@@ -311,7 +337,7 @@ def _compile(nb, nd, nphi, n_time, ns, ch, blk):
     return _CACHE[key]
 
 
-def gather_gpu(traj, tables, mass_ids, lna, tab_ids, block=256):
+def gather_gpu(traj, tables, mass_ids, lna, tab_ids, block=256, times=None):
     """ln Lambda of (template, table) pairs on the GPU, one launch.
 
     traj      dict of device float32 arrays lqH, phH, lqL, phL
@@ -319,6 +345,7 @@ def gather_gpu(traj, tables, mass_ids, lna, tab_ids, block=256):
               shape = (ntau, nphi, nbeta, ndelta), beta, delta
     mass_ids, lna, tab_ids  as for gather_cpu (tab_ids index the stack)
     block     threads per block
+    times     None (every arrival time) or select_times(...): (sel, lw) on the device
 
     returns (NS, nsel) float64 on the host."""
     import cupy as cp
@@ -326,7 +353,9 @@ def gather_gpu(traj, tables, mass_ids, lna, tab_ids, block=256):
     beta, delta = tables["beta"], tables["delta"]
     n_time = int(traj["lqH"].shape[1])
     ns = int(np.asarray(lna).shape[1])
-    fn, shm = _compile(nb, nd, nphi, n_time, ns, _chunk(nphi), block)
+    ks = 0 if times is None else int(times[0].shape[1])
+    fn, shm = _compile(nb, nd, nphi, n_time, ns, _chunk(nphi), block, ks)
+    sel, lw = times if times is not None else (cp.zeros(1, cp.int32), cp.zeros(1, cp.float32))
     ddelta = float(delta[1] - delta[0])
     dm = cp.asarray(np.ascontiguousarray(mass_ids, np.int32))
     nmass = int(dm.size)
@@ -336,6 +365,56 @@ def gather_gpu(traj, tables, mass_ids, lna, tab_ids, block=256):
             cp.asarray(np.ascontiguousarray(tab_ids, np.int32).ravel()),
             tables["tau"], tables["T"], cp.asarray(_offsets(lna, beta).astype(np.float32).ravel()),
             np.float32(2.0 / float(beta[1] - beta[0])), np.float32(-float(delta[0]) / ddelta),
-            np.float32(1.0 / ddelta), np.int64(tables["tstride"]), np.int32(ntau), om, os_)
+            np.float32(1.0 / ddelta), np.int64(tables["tstride"]), np.int32(ntau),
+            cp.ascontiguousarray(sel, cp.int32), cp.ascontiguousarray(lw, cp.float32), om, os_)
     fn((nmass, ntau), (block,), args, shared_mem=shm)
     return cp.asnumpy(_lse_lags(om, os_, n_time, cp))
+
+
+def select_times(traj, tau_idx, n_loud, n_random, seed, xp=np, block=256):
+    """the arrival times visited for every template.
+
+    The n_loud times with the largest |z_L(t)|^2 + max_tau |z_H(t + tau)|^2 are
+    kept exactly; n_random more are drawn uniformly (with replacement) from the
+    rest and carry the log weight ln((n_time - n_loud) / n_random), so the sum
+    over the selection estimates the sum over all times without bias.  The
+    ranking uses the data only.  The random draw is made with numpy on the
+    host, so the CPU and the GPU visit the same times.
+
+    traj      dict with lqH, lqL (n_template, n_time) on the device of xp
+    tau_idx   the lags of the tables (contiguous integers)
+    block     templates ranked at once (bounds the temporary memory)
+
+    returns (sel, lw): (n_template, n_loud + n_random) int32 times, sorted,
+    and float32 log weights, on the device of xp."""
+    K, S = int(n_loud), int(n_random)
+    nm, nt = traj["lqH"].shape
+    lags = np.asarray(tau_idx).ravel().astype(int)
+    lo, hi = int(lags.min()), int(lags.max())
+    if not np.array_equal(np.sort(lags), np.arange(lo, hi + 1)):
+        raise ValueError("lags are not contiguous")
+    k = int(np.floor(np.log2(hi - lo + 1)))
+    pick = np.random.default_rng(seed).integers(0, nt - K, size=(nm, S))
+    sel = xp.empty((nm, K + S), xp.int32)
+    for a in range(0, nm, block):
+        b = min(a + block, nm)
+        # max over the lags lo..hi of |z_H(t + tau)|^2: a sliding maximum built by doubling (ln|z| is monotone)
+        W = traj["lqH"][a:b]
+        for i in range(k):
+            W = xp.maximum(W, xp.roll(W, -(1 << i), axis=1))
+        mx = xp.maximum(xp.roll(W, -lo, axis=1), xp.roll(W, -(hi - (1 << k) + 1), axis=1))
+        del W
+        score = xp.exp(2.0 * traj["lqL"][a:b]) + xp.exp(2.0 * mx)
+        del mx
+        top = xp.argpartition(-score, K, axis=1)[:, :K]
+        del score
+        rest = xp.ones((b - a, nt), bool)
+        rest[xp.arange(b - a)[:, None], top] = False
+        rest = xp.nonzero(rest)[1].reshape(b - a, nt - K)          # the other times, in time order
+        sel[a:b] = xp.concatenate([top, xp.take_along_axis(rest, xp.asarray(pick[a:b]), axis=1)], axis=1)
+        del top, rest
+    lw = xp.zeros((nm, K + S), xp.float32)
+    lw[:, K:] = np.log((nt - K) / S)
+    order = xp.argsort(sel, axis=1)
+    return (xp.ascontiguousarray(xp.take_along_axis(sel, order, axis=1)),
+            xp.ascontiguousarray(xp.take_along_axis(lw, order, axis=1)))
