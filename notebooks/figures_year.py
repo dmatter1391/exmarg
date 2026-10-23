@@ -246,7 +246,7 @@ def fig_population_searches(P):
     a.set_yscale("log"); a.set_xlim(0, 5); a.set_ylim(1.0, 1000.0); a.grid(color="0.87", lw=0.5); a.set_xlabel(r"$z$"); a.set_ylabel(r"$R(z)\ [{\rm Gpc^{-3}\,yr^{-1}}]$")
     am.set_xscale("log"); am.set_yscale("log"); am.set_xlim(5, 100); am.set_ylim(1e-5, 1.0); am.grid(color="0.87", lw=0.5)
     am.set_xticks([5, 10, 20, 50, 100]); am.set_xticklabels(["5", "10", "20", "50", "100"]); am.minorticks_off()
-    am.set_xlabel(r"$m_1^{\rm src}\ [M_\odot]$"); am.set_ylabel(r"$\pi_{\rm src}(m_1)\ [M_\odot^{-1}]$")
+    am.set_xlabel(r"$m_1^{\rm src}\ [M_\odot]$"); am.set_ylabel(r"$\pi_{\rm src}(m_1^{\rm src})\ [M_\odot^{-1}]$")
     fig.legend(hs, ls, frameon=False, loc="upper center", ncol=4, handlelength=1.7, columnspacing=1.6, fontsize=10)
     fig.tight_layout(pad=0.3, rect=[0, 0, 1, 0.9], w_pad=1.2)
     plt.close(fig)
