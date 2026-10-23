@@ -9,12 +9,14 @@ modules:
   numerics   log-arithmetic helpers (no physics inside)
   tables     the W tables (GORFs): sky/orientation/distance averages
   geometry   the GORFs in frequency and the truncation deficit
-  search     the analysis of segments: read the summed tables at
-             every arrival time and lag, on the CPU or the GPU
+  pp         probability-probability tests
+  priors     the distance priors
+  search     the analysis of segments: read the summed tables over
+             the arrival times and lags, on the CPU or the GPU
 
 extrinsics (sky, time, phase, polarization, inclination, distance)
-are never sampled; they live inside the tables.  formalism:
-paper/main.pdf.
+are never sampled; they live inside the tables.  formalism: the
+paper (LIGO-P2600555).
 """
 
 from .profiles import profile
