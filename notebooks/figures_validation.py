@@ -398,27 +398,27 @@ def fig_corner_2p(d, rho):
 
 
 def fig_corner_cogwheel(panels):
-    """posteriors of (chirp mass, mass ratio, spin): ours (grid samples) and cogwheel (weighted samples), one corner per
-    segment.  panels = list of dicts with ours_<k>, cog_<k>, cog_weight, true_<k> for k in Mc, q, chi, and rho."""
-    OURS, SAMP, GREY = figstyle.NAVY, figstyle.RED, '0.35'
+    """posteriors of (chirp mass, mass ratio, spin): ours (grid samples, 50 and 90 percent contours) and cogwheel at each of
+    its settings (weighted samples, 90 percent contour, one color per setting), one corner per segment.
+    panels = list of dicts: ours_<k>, true_<k> for k in Mc, q, chi; rho; cog = list of dicts with Mc, q, chi, weight, color, label."""
+    OURS, GREY = figstyle.NAVY, '0.35'
     KEYS = ['Mc', 'q', 'chi']
     LAB = {'Mc': r'$\mathcal{M}_c$', 'q': r'$q$', 'chi': r'$\chi_{\rm eff}$'}
     n = len(KEYS)
+
+    def wq(x, w, p):
+        o = np.argsort(x); c = np.cumsum(w[o]); return np.interp(p * c[-1], c, x[o])
+
     with _style():
-        fig = plt.figure(figsize=(4.0 * len(panels), 4.6))
-        outer = GridSpec(1, len(panels), figure=fig, wspace=0.25, left=0.08, right=0.98, top=0.86, bottom=0.2)
+        fig = plt.figure(figsize=(4.2 * len(panels), 5.4))
+        outer = GridSpec(1, len(panels), figure=fig, wspace=0.25, left=0.07, right=0.98, top=0.88, bottom=0.3)
         for b, d in enumerate(panels):
             OUR = {k: np.asarray(d['ours_' + k]) for k in KEYS}
-            S = {k: np.asarray(d['cog_' + k]) for k in KEYS}
-            wb = np.asarray(d['cog_weight'])
             TRU = {k: float(d['true_' + k]) for k in KEYS}
 
-            def wq(x, w, p):
-                o = np.argsort(x); c = np.cumsum(w[o]); return np.interp(p * c[-1], c, x[o])
-
             def rng_(k):
-                lo = min(wq(S[k], wb, 0.003), np.percentile(OUR[k], 0.3), TRU[k])
-                hi = max(wq(S[k], wb, 0.997), np.percentile(OUR[k], 99.7), TRU[k])
+                lo = min([np.percentile(OUR[k], 0.3), TRU[k]] + [wq(np.asarray(c[k]), np.asarray(c['weight']), 0.003) for c in d['cog']])
+                hi = max([np.percentile(OUR[k], 99.7), TRU[k]] + [wq(np.asarray(c[k]), np.asarray(c['weight']), 0.997) for c in d['cog']])
                 pad = 0.08 * (hi - lo)
                 return lo - pad, hi + pad
 
@@ -427,17 +427,21 @@ def fig_corner_cogwheel(panels):
                 for j in range(i + 1):
                     ax = fig.add_subplot(gs[i, j]); kx, ky = KEYS[j], KEYS[i]; rx, ry = rng_(kx), rng_(ky)
                     if i == j:
-                        ax.hist(S[kx], bins=30, range=rx, weights=wb, density=True, histtype='step', color=SAMP, lw=1.5)
-                        ax.hist(OUR[kx], bins=30, range=rx, density=True, histtype='step', color=OURS, lw=1.8)
+                        for c in d['cog']:
+                            ax.hist(c[kx], bins=30, range=rx, weights=c['weight'], density=True, histtype='step', color=c['color'], lw=1.1)
+                        ax.hist(OUR[kx], bins=30, range=rx, density=True, histtype='step', color=OURS, lw=2.2)
                         ax.axvline(TRU[kx], color=GREY, lw=0.8)
                         ax.set_yticks([])
                     else:
-                        for x, y, w, col in ((S[kx], S[ky], wb, SAMP), (OUR[kx], OUR[ky], None, OURS)):
-                            H, xe, ye = np.histogram2d(x, y, bins=26, range=[rx, ry], weights=w)
-                            H = gaussian_filter(H, 1.0); H /= H.sum(); lv = _levels(H)
+                        for c in d['cog']:
+                            H, xe, ye = np.histogram2d(c[kx], c[ky], bins=26, range=[rx, ry], weights=c['weight'])
+                            H = gaussian_filter(H, 1.0); H /= H.sum(); lv = _levels(H, fracs=(0.9,))
                             if lv:
-                                ax.contour(0.5 * (xe[1:] + xe[:-1]), 0.5 * (ye[1:] + ye[:-1]), H.T, levels=lv,
-                                           colors=[col], linewidths=(1.0, 1.8))
+                                ax.contour(0.5 * (xe[1:] + xe[:-1]), 0.5 * (ye[1:] + ye[:-1]), H.T, levels=lv, colors=[c['color']], linewidths=1.0)
+                        H, xe, ye = np.histogram2d(OUR[kx], OUR[ky], bins=26, range=[rx, ry])
+                        H = gaussian_filter(H, 1.0); H /= H.sum(); lv = _levels(H)
+                        if lv:
+                            ax.contour(0.5 * (xe[1:] + xe[:-1]), 0.5 * (ye[1:] + ye[:-1]), H.T, levels=lv, colors=[OURS], linewidths=(1.2, 2.2))
                         ax.axvline(TRU[kx], color=GREY, lw=0.8); ax.axhline(TRU[ky], color=GREY, lw=0.8)
                     ax.set_xlim(rx)
                     if i != j:
@@ -452,10 +456,13 @@ def fig_corner_cogwheel(panels):
                         ax.set_ylabel(LAB[ky], fontsize=12)
                     elif j > 0:
                         ax.set_yticklabels([])
-            fig.text(0.08 + (b + 0.5) * 0.9 / len(panels), 0.9, r'SNR $= %.1f$' % d['rho'], fontsize=12, ha='center')
-        fig.legend(handles=[plt.Line2D([], [], color=OURS, lw=1.8, label='This Work'),
-                            plt.Line2D([], [], color=SAMP, lw=1.5, label='cogwheel'),
-                            plt.Line2D([], [], color=GREY, lw=0.8, label='True Value')],
-                   loc='lower center', frameon=False, fontsize=11, ncol=3)
+            fig.text(0.07 + (b + 0.5) * 0.91 / len(panels), 0.92, r'SNR $= %.1f$' % d['rho'], fontsize=12, ha='center')
+        handles = [plt.Line2D([], [], color=OURS, lw=2.2, label='This Work'), plt.Line2D([], [], color=GREY, lw=0.8, label='True Value')]
+        seen = set()
+        for d in panels:
+            for c in d['cog']:
+                if c['label'] not in seen:
+                    seen.add(c['label']); handles.append(plt.Line2D([], [], color=c['color'], lw=1.1, label=c['label']))
+        fig.legend(handles=handles, loc='lower center', frameon=False, fontsize=10, ncol=3)
     plt.close(fig)
     return fig
