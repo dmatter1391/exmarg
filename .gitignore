@@ -36,7 +36,6 @@ data/year/
 !data/segments/
 !data/segments/three_parameters.npz
 !data/segments/two_parameters.npz
-!data/segments/bilby_comparison.npz
 !data/segments/family.npz
 !data/banks/
 !data/banks/*.npy
@@ -55,6 +54,7 @@ data/year/
 !scripts/run_cogwheel_pe.py
 !scripts/compute_convergence.py
 !scripts/fetch_tables.py
+!scripts/build_population.py
 !scripts/build_tables/
 !scripts/build_tables/*.py
 !tests/

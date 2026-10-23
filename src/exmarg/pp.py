@@ -15,7 +15,7 @@ import numpy as np
 
 from .detectors import S, Fplus_Fcross, c, x, basis
 from .profiles import profile
-from .priors import distance_density
+from .priors import distance_density, madau_dickinson_ymin, population_m1_z
 from .search import mass_bank, pe_intrinsic, pe_redshift
 from .search.segments import D0
 
@@ -79,12 +79,14 @@ def credible_level(grid, marginal, truth):
 
 
 def run_intrinsic(store, n_events, M_range=(20.0, 200.0), q_range=(0.3, 1.0), chi_range=(-0.6, 0.6),
-                  prior='madau-dickinson', ymin=0.1267, n_grid=(40, 24, 20), n_samples=20000, seed=1, device='cpu',
-                  T=4.0, fmin=20.0, fmax=512.0, resident=False):
+                  prior='madau-dickinson', ymin=None, n_grid=(40, 24, 20), n_samples=20000, seed=1, device='cpu',
+                  T=8.0, fmin=20.0, fmax=512.0, resident=False):
     """credible levels of (M_c, q, chi) for n_events injections, uniform in the box of (M_det, q, chi);
     returns an array (n_events, 4): the three levels and the optimal network SNR of the injection.
     The analysis grid is uniform in (M_det, q, chi); the level of M_c comes from posterior samples spread uniformly
-    inside the cells of the grid."""
+    inside the cells of the grid.  ymin defaults to the smallest y of the distance prior."""
+    if ymin is None:
+        ymin = madau_dickinson_ymin() if prior == 'madau-dickinson' else 0.1267
     draw = lambda rng: (rng.uniform(*M_range), rng.uniform(*q_range), rng.uniform(*chi_range))
     segments, truth, snr = simulate(n_events, seed * 100000, draw, lambda rng: draw_y(rng, prior, ymin), T, fmin, fmax)
     axes = [np.linspace(*r, n) for r, n in zip((M_range, q_range, chi_range), n_grid)]
@@ -107,32 +109,43 @@ def run_intrinsic(store, n_events, M_range=(20.0, 200.0), q_range=(0.3, 1.0), ch
     return levels
 
 
-def run_redshift(store, n_events, bank, Mdet_range=(20.0, 200.0), prior='madau-dickinson', ymin=0.1267, seed=2,
-                 device='cpu', T=8.0, fmin=20.0, fmax=512.0, zmax=10.0, m1_range=(0.5, 150.0), batch=32, resident=False):
-    """credible levels of (m1_source, z) for n_events equal-mass binaries without spin, uniform in the detector-frame
-    total mass on Mdet_range and with the distance from the distance prior; bank is the one-column bank of
-    detector-frame total masses of pe_redshift.  returns an array (n_events, 3): the m1 and z levels and the
-    optimal network SNR.  The (m1, z) grid of pe_redshift covers the whole prior (zmax, m1_range)."""
+def run_redshift(store, n_events, bank, Mdet_range=(10.0, 500.0), seed=2, device='cpu', T=8.0, fmin=20.0, fmax=512.0,
+                 zmax=10.0, m1_range=(2.0, 200.0), batch=32, resident=False):
+    """credible levels of (m1_source, z) for n_events equal-mass binaries without spin drawn from the population of
+    the paper (exmarg.priors.population_m1_z, GWTC-5 masses and Madau-Dickinson redshifts out to z = 10), kept when
+    M_det = 2 m1 (1 + z) lies on Mdet_range, the range of the bank; bank is the one-column bank of detector-frame
+    total masses of pe_redshift.  The analysis prior is the same population on the same range.  returns an array
+    (n_events, 3): the m1 and z levels and the optimal network SNR."""
     from astropy.cosmology import Planck18
-    draw = lambda rng: (rng.uniform(*Mdet_range), 1.0, 0.0)
-    segments, truth, snr = simulate(n_events, seed * 100000, draw, lambda rng: draw_y(rng, prior, ymin), T, fmin, fmax)
+    (m1p, pm1), (zp, pz) = population_m1_z()
+    ymin = madau_dickinson_ymin()
+
+    def inv_cdf(x, p, r):
+        c = np.concatenate([[0.0], np.cumsum(0.5 * (p[1:] + p[:-1]) * np.diff(x))])
+        return np.interp(r, c / c[-1], x)
+
+    zz = np.linspace(0.0, 12.0, 24001)
+    dl = Planck18.luminosity_distance(zz).value
+    pairs = {}
+
+    def draw(rng):
+        while True:                                        # (m1, z) from the population, kept inside Mdet_range
+            m1_, z_ = inv_cdf(m1p, pm1, rng.uniform()), inv_cdf(zp, pz, rng.uniform())
+            if Mdet_range[0] <= 2 * m1_ * (1 + z_) <= Mdet_range[1]:
+                pairs[id(rng)] = z_
+                return 2 * m1_ * (1 + z_), 1.0, 0.0
+
+    segments, truth, snr = simulate(n_events, seed * 100000, draw, lambda rng: D0 / np.interp(pairs[id(rng)], zz, dl),
+                                    T, fmin, fmax)
     templates = mass_bank(bank, segments, device)
     m1 = np.geomspace(m1_range[0], m1_range[1], 1600)
     z = np.linspace(0.02, zmax, 1600)
-    # the prior in (m1, z): the density of ln y = ln(D0 / D_L(z)) carried to z, times the Jacobian 2 (1 + z) of
-    # M_det = 2 m1 (1 + z), on the cells of the grid
-    lny = np.log(D0 / Planck18.luminosity_distance(z).value)
-    density = distance_density(prior)
-    if density is None:
-        p_lny = np.where(lny >= np.log(ymin), 3.0 * np.exp(-3.0 * (lny - np.log(ymin))), 0.0)
-    else:
-        p_lny = np.interp(lny, density[0], density[1], left=0.0, right=0.0)
-    p_z = p_lny * np.abs(np.gradient(lny, z))
+    # the prior in (m1, z): the population on the cells of the grid, inside Mdet_range
     Md = 2.0 * m1[:, None] * (1.0 + z[None, :])
     inside = (Md >= Mdet_range[0]) & (Md <= Mdet_range[1])
-    prior_mz = np.where(inside, p_z[None, :] * 2.0 * (1.0 + z[None, :]), 0.0) * np.gradient(m1)[:, None] * np.gradient(z)[None, :]
-    zz = np.linspace(0.0, 12.0, 24001)
-    z_true = np.interp(D0 / truth[:, 3], Planck18.luminosity_distance(zz).value, zz)
+    prior_mz = (np.where(inside, np.interp(m1, m1p, pm1, left=0.0, right=0.0)[:, None] * np.interp(z, zp, pz, left=0.0, right=0.0)[None, :], 0.0)
+                * np.gradient(m1)[:, None] * np.gradient(z)[None, :])
+    z_true = np.interp(D0 / truth[:, 3], dl, zz)
     levels = np.empty((n_events, 3))
     for k in range(n_events):
         if k % batch == 0:                                         # ln Lambda(m1, z) of the next batch of segments

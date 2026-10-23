@@ -246,7 +246,7 @@ def fig_population_searches(P):
     a.set_yscale("log"); a.set_xlim(0, 5); a.set_ylim(1.0, 1000.0); a.grid(color="0.87", lw=0.5); a.set_xlabel(r"$z$"); a.set_ylabel(r"$R(z)\ [{\rm Gpc^{-3}\,yr^{-1}}]$")
     am.set_xscale("log"); am.set_yscale("log"); am.set_xlim(5, 100); am.set_ylim(1e-5, 1.0); am.grid(color="0.87", lw=0.5)
     am.set_xticks([5, 10, 20, 50, 100]); am.set_xticklabels(["5", "10", "20", "50", "100"]); am.minorticks_off()
-    am.set_xlabel(r"$m_1\ [M_\odot]$"); am.set_ylabel(r"$\pi_{\rm src}(m_1)\ [M_\odot^{-1}]$")
+    am.set_xlabel(r"$m_1^{\rm src}\ [M_\odot]$"); am.set_ylabel(r"$\pi_{\rm src}(m_1)\ [M_\odot^{-1}]$")
     fig.legend(hs, ls, frameon=False, loc="upper center", ncol=4, handlelength=1.7, columnspacing=1.6, fontsize=10)
     fig.tight_layout(pad=0.3, rect=[0, 0, 1, 0.9], w_pad=1.2)
     plt.close(fig)
@@ -441,16 +441,29 @@ def fig_time_versions(T):
 
 
 def fig_dkl_control(I):
-    """Fig. 13: histograms of D_KL,i of the merger segments at n_max = 20 and 120, simulated and phase-randomized data; I = information.npz."""
+    """Fig. 13: histograms of D_KL,i of the merger segments at n_max = 120, simulated and phase-randomized data, and on the
+    twin axes the cumulative sum of D_KL,i over the mergers ordered by their matched-filter SNR, as a fraction of the total;
+    I = information.npz."""
     _style({"font.size": 10, "axes.labelsize": 12, "xtick.labelsize": 10, "ytick.labelsize": 10, "legend.fontsize": 9.5, "lines.linewidth": 1.8})
-    fig, a = plt.subplots(figsize=(3.4, 2.9)); bins = np.linspace(-10, -1, 46); DKLCOL = {20: "#16263F", 120: "#C8433F"}
-    for n in (20, 120):
-        for v, ls in ((I["dkl_simulated_n%d" % n], "-"), (I["dkl_phase_randomized_n%d" % n], DASH)):
-            h, _ = np.histogram(np.log10(np.maximum(np.asarray(v, float), 1e-10)), bins); a.step(bins, np.r_[h, h[-1]], where="post", color=DKLCOL[n], lw=1.8, ls=ls)
+    fig, a = plt.subplots(figsize=(4.4, 3.9)); bins = np.linspace(-10, -1, 46); HCOL, CCOL = "0.25", "#2F6DB5"
+    for v, ls in ((I["dkl_simulated_n120"], "-"), (I["dkl_phase_randomized_n120"], DASH)):
+        h, _ = np.histogram(np.log10(np.maximum(np.asarray(v, float), 1e-10)), bins); a.step(bins, np.r_[h, h[-1]], where="post", color=HCOL, lw=1.8, ls=ls)
     a.set_yscale("log"); a.set_xlabel(r"$\log_{10} D_{{\rm KL},i}$"); a.set_ylabel(r"Number of mergers"); a.grid(color="0.82", lw=0.5, alpha=0.7)
-    hs = [Line2D([], [], color="0.6", ls="-"), Line2D([], [], color="0.6", ls=DASH)] + [Line2D([], [], color=DKLCOL[n]) for n in (20, 120)]
-    fig.legend(hs, ["Simulated Data", "Phase Randomized", r"$n_{\max} = 20$", r"$n_{\max} = 120$"], ncol=2, loc="upper center", frameon=False,
+    fig.subplots_adjust(left=0.16, right=0.82, top=0.83, bottom=0.31)
+    b = fig.add_axes(a.get_position(), frame_on=False)
+    b.xaxis.tick_top(); b.xaxis.set_label_position("top"); b.yaxis.tick_right(); b.yaxis.set_label_position("right")
+    rho, d = np.asarray(I["rho_mf_mergers"], float), np.asarray(I["dkl_simulated_n120"], float)
+    o = np.argsort(rho)
+    b.plot(rho[o], np.cumsum(d[o]) / d.sum(), color=CCOL, lw=2.2)
+    b.axvline(8.0, color="0.3", lw=1.0, ls=":")
+    b.set_xscale("log"); b.set_xlim(0.5, 100); b.set_ylim(0, 1.05)
+    b.set_xlabel(r"Matched-Filter SNR $\rho^{\max}_{\rm mf}$"); b.set_ylabel(r"Cumulative Fraction of $D_{\rm KL}$", fontsize=10.5)
+    # the axes of the cumulative curve (top and right) in its color
+    b.tick_params(axis="both", colors=CCOL, which="both"); b.xaxis.label.set_color(CCOL); b.yaxis.label.set_color(CCOL)
+    for side in ("top", "right"):
+        a.spines[side].set_color(CCOL); a.spines[side].set_linewidth(1.3)
+    hs = [Line2D([], [], color=HCOL, ls="-"), Line2D([], [], color=HCOL, ls=DASH), Line2D([], [], color=CCOL, lw=2.2)]
+    fig.legend(hs, ["Simulated Data", "Phase Randomized", "Cumulative over SNR"], ncol=2, loc="lower center", frameon=False,
                handlelength=1.6, columnspacing=0.8, fontsize=9)
-    fig.tight_layout(rect=[0, 0, 1, 1 - (0.2 * 2 + 0.1) / fig.get_figheight()], pad=0.3)
     plt.close(fig)
     return fig

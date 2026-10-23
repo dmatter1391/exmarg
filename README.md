@@ -29,11 +29,11 @@ for the analysis in $(M^{\rm det}, q, \chi_{\rm eff})$ every template reads the 
 over its prior in the code (`exmarg.search.pe_intrinsic` with the prior `'volume'` or `'madau-dickinson'`).
 
 The tables (40 GB) and the results of the year analysis are on Zenodo, https://doi.org/10.5281/zenodo.23452946 (this DOI
-always points to the latest version, record 23578160). Download them and check every file against its SHA-256 list with
+always points to the latest version, record 23599554). Download them and check every file against its SHA-256 list with
 
 ```
-python scripts/fetch_tables.py 23578160          # the tables, into tables/redshift/
-python scripts/fetch_tables.py 23578160 year     # the results of the year analysis, into data/year/ (notebook 4)
+python scripts/fetch_tables.py 23599554          # the tables, into tables/redshift/
+python scripts/fetch_tables.py 23599554 year     # the results of the year analysis, into data/year/ (notebook 4)
 ```
 
 On the GPU the tables are read into memory, about 0.75 GB per node. On the CPU they can be mapped from disk instead
@@ -66,7 +66,7 @@ earlier analysis code and nested sampling and has not yet been recomputed with `
 | `notebooks/02_single_segments.ipynb` | Analyzes single segments in three parameters (chirp mass, mass ratio, spin) and in two (source-frame mass, redshift), draws the posteriors next to `bilby`, and the convergence in the order of the series (`scripts/compute_convergence.py`) | 16, 17, 18, 20, 21 |
 | `notebooks/03_pp.ipynb` | Probability-probability tests in both set-ups | 19 |
 | `notebooks/04_population.ipynb` | The population results of one simulated year, from the result files on Zenodo | 6 to 13, 22 to 24, 26 to 29 |
-| `notebooks/05_speed.ipynb` | The posteriors of `bilby` on 12 segments, then the time per segment against the SNR on the GPU and the CPU | |
+| `notebooks/05_speed.ipynb` | The Bayes factors of `bilby` on the twelve segments of Fig. 21, then the time per segment against the SNR on the GPU and the CPU | |
 | `notebooks/06_cogwheel.ipynb` | The comparison with `cogwheel` at finer and finer settings, per template and for the posterior | |
 
 The figures are drawn by `notebooks/figures_*.py` in the style of the paper. Figs. 1, 2 and 25 of the paper are not
@@ -76,8 +76,8 @@ reproduced here.
 
 In the repository
 
-* `data/segments/` holds the simulated segments of notebooks 2, 5 and 6 (`three_parameters.npz`, `two_parameters.npz`,
-  `bilby_comparison.npz`) and the binary of Figs. 16 and 17 at five distances (`family.npz`).
+* `data/segments/` holds the simulated segments of notebooks 2, 5 and 6 (`three_parameters.npz`, `two_parameters.npz`)
+  and the binary of Figs. 16 and 17 at five distances (`family.npz`).
 * `data/banks/` holds the template banks of notebooks 2 and 5.
 * `data/results/` holds the `bilby` posteriors, Bayes factors and run times, the `cogwheel` results of
   `scripts/run_cogwheel.py` and `scripts/run_cogwheel_pe.py`, and the results of notebooks 2 and 3.
@@ -94,6 +94,7 @@ From Zenodo (https://doi.org/10.5281/zenodo.23452946)
 
 ```
 python scripts/fetch_tables.py <record> [year]                         # download from Zenodo
+python scripts/build_population.py                                     # the population of the paper, src/exmarg/data/demo_population.npz
 python scripts/run_bilby.py three data/segments/three_parameters.npz <row>   # the nested-sampling runs of Fig. 20
 python scripts/run_bilby.py two data/segments/two_parameters.npz <row>       # the nested-sampling runs of Fig. 21
 python scripts/run_cogwheel.py <row> <M> <q> <chi>                     # cogwheel per template, notebook 6
@@ -109,7 +110,7 @@ src/exmarg/
   profiles.py    the waveform (IMRPhenomXAS) of a template
   data.py        simulated segments
   numerics.py    numerical helpers
-  priors.py      the distance priors
+  priors.py      the distance priors and the population of the paper (GWTC-5 masses, Madau-Dickinson redshifts to z = 10)
   tables.py      the W tables (GORFs)
   geometry.py    the GORFs in frequency and the truncation deficit
   pp.py          probability-probability tests

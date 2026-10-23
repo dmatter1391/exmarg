@@ -6,8 +6,9 @@ y = D0 / D.  two priors are available:
 
   'volume'          uniform in volume, p(y) = 3 ymin^3 / y^4 for y >= ymin (closed form, numerics.py)
   'madau-dickinson' the distance distribution of mergers whose rate follows the Madau-Dickinson history
-                    out to z = 8, the prior of the simulated year of the paper (tabulated in
-                    data/demo_population.npz, evaluated once per order on a grid in ln A)
+                    out to z = 10, the prior of the simulated year of the paper (tabulated in
+                    data/demo_population.npz by scripts/build_population.py, evaluated once per order on a
+                    grid in ln A)
 
     import exmarg
     exmarg.use_distance_prior('madau-dickinson')
@@ -37,8 +38,14 @@ def distance_density(name):
     raise ValueError("the distance prior is 'volume' or 'madau-dickinson', not %r" % name)
 
 
+def population_m1_z():
+    """the population of the paper: (m1, p(m1)) of the source-frame primary mass (GWTC-5) and (z, p(z)) of the
+    redshift (Madau-Dickinson, z <= 10), each normalized on its grid"""
+    return (_POP['m1'], _POP['p_m1']), (_POP['z'], _POP['p_z'])
+
+
 def madau_dickinson_ymin():
-    """the smallest y = D0 / D of the Madau-Dickinson prior (the distance at z = 8)"""
+    """the smallest y = D0 / D of the Madau-Dickinson prior (the distance at z = 10)"""
     return float(_POP['ymin'])
 
 

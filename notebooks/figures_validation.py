@@ -456,8 +456,8 @@ def fig_corner_cogwheel(panels):
                         ax.set_ylabel(LAB[ky], fontsize=12)
                     elif j > 0:
                         ax.set_yticklabels([])
-            fig.text(0.07 + (b + 0.5) * 0.91 / len(panels), 0.92, r'SNR $= %.1f$' % d['rho'], fontsize=12, ha='center')
-        handles = [plt.Line2D([], [], color=OURS, lw=2.2, label='This Work'), plt.Line2D([], [], color=GREY, lw=0.8, label='True Value')]
+            fig.text(0.07 + (b + 0.5) * 0.91 / len(panels), 0.92, r'$\rho_{\rm opt} = %.1f$' % d['rho'], fontsize=12, ha='center')
+        handles = [plt.Line2D([], [], color=OURS, lw=2.2, label=r'$\Lambda^\star_{n_{\max}=120}$'), plt.Line2D([], [], color=GREY, lw=0.8, label='Injection')]
         seen = set()
         for d in panels:
             for c in d['cog']:
