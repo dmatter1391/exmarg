@@ -1,5 +1,5 @@
 """
-the table read: for one template and one table, Eq. (C10) of the paper,
+the table read: for one template and one table, Eq. (C7) of the paper,
 
   ln Lambda = ln( sum_tau sum_t exp lnS(tau; beta, Delta, dphi) ) - ln n_time
   beta  = ln a + 2 ln q_L(t),   Delta = ln q_H(t + tau) - ln q_L(t),

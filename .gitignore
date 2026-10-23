@@ -12,11 +12,20 @@ data/year/
 # everything that is not part of the release
 *
 !.gitignore
-!README.md
+!/README.md
 !pyproject.toml
 !src/
 !src/exmarg/
-!src/exmarg/*.py
+!src/exmarg/__init__.py
+!src/exmarg/data.py
+!src/exmarg/detectors.py
+!src/exmarg/figstyle.py
+!src/exmarg/geometry.py
+!src/exmarg/numerics.py
+!src/exmarg/pp.py
+!src/exmarg/priors.py
+!src/exmarg/profiles.py
+!src/exmarg/tables.py
 !src/exmarg/search/
 !src/exmarg/search/*.py
 !src/exmarg/data/
@@ -36,6 +45,7 @@ data/year/
 !data/tables/
 !data/tables/s_grid.npz
 !data/tables/tables.sha256
+!data/tables/year.sha256
 !notebooks/
 !notebooks/*.ipynb
 !notebooks/figures_*.py
@@ -50,15 +60,3 @@ data/year/
 !tests/
 !tests/conftest.py
 !tests/test_tables.py
-src/exmarg/sladder.py
-scripts/README.md
-# earlier readers and table chains, kept on disk for the production pipeline only, not part of the release
-src/exmarg/evaluate.py
-src/exmarg/kernel.py
-src/exmarg/gpu/
-scripts/build_store.py
-scripts/build_kstore.py
-scripts/merge_store.py
-scripts/derive_sumstores.py
-scripts/benchmark_gpu.py
-tests/test_sum_kernel.py

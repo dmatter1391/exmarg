@@ -1,4 +1,4 @@
-"""Stage 3 of the tables: the sum over the orders, read by exmarg.search (Eq. C10 of the paper).
+"""Stage 3 of the tables: the sum over the orders, read by exmarg.search (the table of Eq. (C6) of the paper).
 
 Every order is homogeneous, lnK_n(q1, q2) = 2n ln q2 + g_n(ln q1 - ln q2), so the sum over the orders
 

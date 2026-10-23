@@ -214,7 +214,7 @@ def w_table_par(u1, u2, ymin, n_max, tau=None, n_tau=4097, nside=32,
     deposits.  identical output to the serial builder.  pix_range =
     (lo, hi) builds only that pixel slice — the deposit is linear
     and keeps the global 1/npix weight, so slices from separate runs
-    SUM to the full table exactly (see scripts/merge_store.py).'''
+    SUM to the full table exactly.'''
     import os
     os.environ.setdefault('OMP_NUM_THREADS', '1')
     from multiprocessing import Pool

@@ -1,6 +1,6 @@
 """The convergence of the series with the truncation order for one binary (Figs. 16 and 17 of the paper).
 
-data/segments/family.npz holds one equal-mass nonspinning binary (detector-frame total mass 65 Msun, q = 6/7) at five
+data/segments/family.npz holds one nonspinning binary (detector-frame total mass 65 Msun, mass ratio q = 6/7) at five
 distances (SNR 8 to 25) in 8 s segments.  For every truncation order n_max of the tables we compute ln Lambda at the true
 template of each segment (Fig. 16), and for n_max = 40, 80 and 120 the posterior of the SNR 11 segment on the bank of
 data/banks/three_parameters.npy, with the distance integrated over the Madau-Dickinson prior (Fig. 17).

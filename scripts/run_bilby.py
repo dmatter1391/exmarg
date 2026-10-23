@@ -1,19 +1,21 @@
 """The bilby/dynesty runs of the paper (Figs. 20 and 21 and the timing of notebook 5), for one segment.
 
-The segment file holds the data of the two detectors in our frequency-domain convention: dH, dL (complex, one value per
-frequency bin f), f, sig2 (the noise variance of a bin, T S(f) / 2), T, fmin, fmax and gps (the center of the segment).
-bilby gets exactly these bins, with the one-sided noise curve S(f) = 2 sig2 / T and the strain equal to our data.
+The segments are read from a file of data/segments/ in our frequency-domain convention: d_H, d_L (complex, one row per
+segment and one value per frequency bin f), f, sig2 (the noise variance of a bin, T S(f) / 2), T, fmin and fmax.  The
+segment is centered at GPS time 1e9 + T/2.  bilby gets exactly these bins, with the one-sided noise curve S(f) = 2 sig2 / T
+and the strain equal to our data.
 
 Two set-ups:
-  three  chirp mass, mass ratio and spin chi_1 = chi_2 = chi_eff sampled; distance, phase and arrival time marginalized
+  three  chirp mass (uniform between 7 and 87 solar masses), mass ratio (uniform between 0.3 and 1) and spin
+         chi_1 = chi_2 = chi_eff (uniform between -0.6 and 0.6) sampled; distance, phase and arrival time marginalized
          analytically by bilby; sky position, inclination and polarization sampled;
   two    equal masses without spin (the population analysis of the paper); chirp mass and distance sampled, which gives the
          source-frame primary mass and the redshift; phase and arrival time marginalized; sky, inclination, polarization sampled.
 Common: IMRPhenomXAS, the arrival time anywhere in the segment, isotropic sky and orientation, the distance uniform in
 Euclidean volume out to 82,163 Mpc, dynesty with 2000 live points and dlogz = 0.1.
 
-    python scripts/run_bilby.py three segment.npz [cores]
-    python scripts/run_bilby.py two   segment.npz [cores]
+    python scripts/run_bilby.py three data/segments/three_parameters.npz <row> [cores]
+    python scripts/run_bilby.py two   data/segments/two_parameters.npz <row> [cores]
 """
 import sys
 
@@ -22,6 +24,16 @@ import numpy as np
 from bilby.gw.conversion import chirp_mass_and_mass_ratio_to_component_masses
 
 NLIVE, DLOGZ, D_MAX = 2000, 0.1, 82163.0
+GPS = 1.0e9                                       # start of every segment
+
+
+def segment(segment_file, row):
+    """one segment of a file of data/segments/ as the dictionary the functions below read"""
+    z = np.load(segment_file)
+    T = float(z['T'])
+    sig2 = z['sig2'] if 'sig2' in z.files else z['sig2_H']
+    return dict(dH=z['d_H'][row], dL=z['d_L'][row], f=z['f'], sig2=sig2, T=T, fmin=float(z['fmin']),
+                fmax=float(z['fmax']), gps=GPS + T / 2)
 
 
 def aligned_bbh(frequency_array, chirp_mass, mass_ratio, chi, luminosity_distance, theta_jn, phase, **kwargs):
@@ -59,7 +71,7 @@ def priors(seg, setup):
     T, gps = float(seg['T']), float(seg['gps'])
     p = bilby.core.prior.PriorDict()
     if setup == 'three':
-        p['chirp_mass'] = bilby.core.prior.Uniform(7.0, 87.0, 'chirp_mass')        # detector-frame total mass 20 to 200
+        p['chirp_mass'] = bilby.core.prior.Uniform(7.0, 87.0, 'chirp_mass')
         p['mass_ratio'] = bilby.core.prior.Uniform(0.3, 1.0, 'mass_ratio')
         p['chi'] = bilby.core.prior.Uniform(-0.6, 0.6, 'chi')
     else:
@@ -77,8 +89,8 @@ def priors(seg, setup):
     return p
 
 
-def run(setup, segment_file, cores=32):
-    seg = np.load(segment_file)
+def run(setup, segment_file, row, cores=32):
+    seg = segment(segment_file, row)
     T, fmin, fmax = float(seg['T']), float(seg['fmin']), float(seg['fmax'])
     waveform = bilby.gw.WaveformGenerator(
         duration=T, sampling_frequency=2 * fmax, frequency_domain_source_model=aligned_bbh,
@@ -89,8 +101,8 @@ def run(setup, segment_file, cores=32):
         distance_marginalization=(setup == 'three'), phase_marginalization=True, time_marginalization=True)
     extra = {} if setup == 'three' else dict(sample='rslice', bound='multi')
     return bilby.run_sampler(likelihood=likelihood, priors=prior, sampler='dynesty', nlive=NLIVE, dlogz=DLOGZ, npool=cores,
-                             outdir='bilby_%s' % setup, label=segment_file.split('/')[-1][:-4], **extra)
+                             outdir='bilby_%s' % setup, label='%s_row%d' % (segment_file.split('/')[-1][:-4], row), **extra)
 
 
 if __name__ == '__main__':
-    run(sys.argv[1], sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 32)
+    run(sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]) if len(sys.argv) > 4 else 32)

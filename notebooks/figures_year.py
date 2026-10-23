@@ -221,7 +221,7 @@ def fig_corner_years(P):
 
 
 def fig_corner_null(P):
-    """Fig. 28: no-threshold and uninformed searches in ten years of noise only; P = posteriors.npz."""
+    """Fig. 29: no-threshold and uninformed searches in ten years of noise only; P = posteriors.npz."""
     sets = [("noise_no_threshold_year", "#0072B2", "No Threshold"), ("noise_uninformed_year", "0.15", "Uninformed")]
     return _corner_years(P, sets, False, None, CORNER_RANGES["null"], 3)
 
@@ -254,7 +254,7 @@ def fig_population_searches(P):
 
 
 def fig_rate_versions(P):
-    """Fig. 27: R(z) bands at n_max = 40, 80, 120 of the five searches, one panel each; P = posteriors.npz."""
+    """Fig. 28: R(z) bands at n_max = 40, 80, 120 of the five searches, one panel each; P = posteriors.npz."""
     _style({"font.size": 9.5, "axes.labelsize": 11.5, "xtick.labelsize": 9.5, "ytick.labelsize": 9.5, "legend.fontsize": 10})
     orders = (40, 80, 120); tr = P["injected"]
     fig, ax = plt.subplots(1, 5, figsize=(7.0, 3.0), sharey=True)
@@ -290,7 +290,7 @@ def _tick(v):
 
 
 def fig_segment_information(I):
-    """Fig. 9: s_i^(j) s_i^(k) / sqrt(F^jj F^kk) of every unresolved merger at its (m1_src, z), with the z profile of the diagonal; I = information.npz."""
+    """Fig. 11: s_i^(j) s_i^(k) / sqrt(F^jj F^kk) of every unresolved merger at its (m1_src, z), with the z profile of the diagonal; I = information.npz."""
     order = [1, 2, 3, 4, 5, 6, 0]
     sym = [r"\alpha_1", r"\alpha_2", r"\mu_2", r"\gamma", r"\kappa", r"z_{\rm p}", r"R_0"]
     G = np.asarray(I["s_unresolved"], float)[:, order]; FJJ = np.asarray(I["F_diagonal"], float)[order]
@@ -359,7 +359,7 @@ def fig_segment_information(I):
 
 
 def fig_segment_bf_hist(B, orders=(120,), phase_randomized=False):
-    """Figs. 10, 13, 25: histograms of the per-segment ln B_i; B = segment_lnB.npz, orders (1, 10, 20, 40) for Fig. 25, phase_randomized=True for Fig. 13."""
+    """Figs. 9, 12, 26: histograms of the per-segment ln B_i; B = segment_lnB.npz, orders (1, 10, 20, 40) for Fig. 26, phase_randomized=True for Fig. 12."""
     _style({"font.family": "serif", "mathtext.fontset": "cm", "font.size": 11, "axes.labelsize": 13, "xtick.labelsize": 11, "ytick.labelsize": 11,
             "xtick.direction": "in", "ytick.direction": "in", "xtick.top": True, "ytick.right": True, "axes.linewidth": 1.2}, base=False)
     edges = np.r_[np.arange(-0.3, 1.0, 0.05), np.geomspace(1.0, 1500.0, 70)]; one = len(orders) == 1
@@ -403,7 +403,7 @@ def _time_axes(a, last, linscale):
 
 
 def fig_time_thresholds(T):
-    """Fig. 11: ln B against observing time of the two searches at rho_th = 8, 10, 12, n_max = 120; T = time_curves.npz."""
+    """Fig. 10: ln B against observing time of the two searches at rho_th = 8, 10, 12, n_max = 120; T = time_curves.npz."""
     _style({"font.size": 9.5, "axes.labelsize": 11.5, "xtick.labelsize": 9.5, "ytick.labelsize": 9.5, "legend.fontsize": 10})
     day = lambda t: t[:, 0] * float(T["segment_duration"]) / 86400.0; TC = {8: "#7FA8C9", 10: "#3D6A99", 12: "#16263F"}
     fig, ax = plt.subplots(1, 2, figsize=(7.0, 3.0), sharey=True)
@@ -421,7 +421,7 @@ def fig_time_thresholds(T):
 
 
 def fig_time_versions(T):
-    """Fig. 26: ln B against observing time at n_max = 20, 40, 80, 120 of four searches, one panel each; T = time_curves.npz."""
+    """Fig. 27: ln B against observing time at n_max = 20, 40, 80, 120 of four searches, one panel each; T = time_curves.npz."""
     _style({"font.size": 9.5, "axes.labelsize": 11.5, "xtick.labelsize": 9.5, "ytick.labelsize": 9.5, "legend.fontsize": 10})
     fig, ax = plt.subplots(1, 4, figsize=(7.0, 2.55), sharey=True)
     for a, search in zip(ax, ("no_threshold", "uninformed_th12", "uninformed_th8", "informed_th8")):
@@ -441,7 +441,7 @@ def fig_time_versions(T):
 
 
 def fig_dkl_control(I):
-    """Fig. 12: histograms of D_KL,i of the merger segments at n_max = 20 and 120, simulated and phase-randomized data; I = information.npz."""
+    """Fig. 13: histograms of D_KL,i of the merger segments at n_max = 20 and 120, simulated and phase-randomized data; I = information.npz."""
     _style({"font.size": 10, "axes.labelsize": 12, "xtick.labelsize": 10, "ytick.labelsize": 10, "legend.fontsize": 9.5, "lines.linewidth": 1.8})
     fig, a = plt.subplots(figsize=(3.4, 2.9)); bins = np.linspace(-10, -1, 46); DKLCOL = {20: "#16263F", 120: "#C8433F"}
     for n in (20, 120):

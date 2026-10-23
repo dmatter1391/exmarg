@@ -1,21 +1,10 @@
 """Stage 1 of the tables, the GPU (cupy) quadrature of the GORFs W at the nodes of s = u y^2 (used by build_w.py).
 
-The CPU builder (exmarg.sladder._chunk_vc_s) computes, per sky-pixel
-chunk, the response monomials and the exponential damping and sums
-them over the (psi, chi) quadrature.  On L40S-class GPUs fp64 is
-crippled (~1:64), so the heavy quadrature reduction is done in fp32
-on a strictly O(1) integrand and the dynamic-range scaling is applied
-afterwards in fp64 on the host, where it is cheap.
-
-Two things make fp32 safe here:
-
-  * the damping e^{-s(|R1|^2+|R2|^2)} <= 1 is bounded, and
-  * the power ladder is normalised by |R|_max = sqrt(2) so every
-    monomial (|R1|/rmax)^p (|R2|/rmax)^q <= 1.
-
-The removed factor rmax^{2n} = 2^n and the storage offset s^n/n! are
-folded into a single per-(node, order) fp64 scale applied on the host
-before the tau deposit.
+Per sky-pixel chunk the builder computes the response monomials and the exponential damping and sums them over the
+(psi, chi) quadrature, in fp64 on the GPU (fp32 underflows at high order, see _chunk_vc_s_gpu).  The integrand is kept
+O(1): the damping e^{-s(|R1|^2+|R2|^2)} <= 1 is bounded and the power ladder is normalised by |R|_max = sqrt(2), so every
+monomial (|R1|/rmax)^p (|R2|/rmax)^q <= 1.  The removed factor rmax^{2n} = 2^n and the storage offset s^n/n! are folded
+into a single per-(node, order) fp64 scale applied on the host before the tau deposit.
 
 Speed comes from three things, in order of importance:
 
@@ -142,9 +131,8 @@ def _chunk_vc_s_gpu(th, ph, s1v, s2v, n_max, psi, cg, wq, plan, n_key_max):
 
 def w_table_s_gpu(s1, s2, n_max, tau=None, n_tau=4097, nside=32,
                   n_psi=None, n_chi=None, chunk=64, verbose=False):
-    """conditional table build, quadrature on GPU (fp32), deposit and
-    dynamic-range scaling on host (fp64).  same output contract as
-    exmarg.sladder.w_table_s_par.  s1 == s2 on the s-ladder."""
+    """table build at the nodes s: quadrature and deposit on the GPU in fp64, the dynamic-range scaling on the host
+    (fp64).  s1 == s2 on the s-ladder."""
     scalar_s = np.ndim(s1) == 0
     psi, cg, wq = _quad(n_max, n_psi, n_chi)
     dx, tau, order, ts, dtau = _tau_grid(tau, n_tau)
