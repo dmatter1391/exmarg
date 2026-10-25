@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exmarg"
+version = "1.0.0"
+description = "Marginalized likelihood ratio of compact binary signals in two detectors through generalized overlap reduction functions"
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy", "healpy", "matplotlib", "numba", "lalsuite", "astropy"]
+
+[project.optional-dependencies]
+compare = ["bilby", "dynesty", "cogwheel-pe", "nautilus-sampler", "pandas"]
+gpu = ["cupy-cuda12x"]
+dev = ["pytest", "jupyter"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+exmarg = ["data/*.npz"]
